@@ -1,4 +1,4 @@
-SillyTranslator Translates SillyTavern presets and character cards metadata automatically
+SillyTranslator translates SillyTavern presets and character cards metadata automatically
 
 
 ## What is SillyTranslator
