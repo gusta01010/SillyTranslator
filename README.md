@@ -1,4 +1,4 @@
-SillyTranslator Translates SillyTavern presets and character cards metadata automatically
+SillyTranslator translates SillyTavern presets and character cards metadata automatically
 
 
 ## What is SillyTranslator
@@ -11,7 +11,7 @@ SillyTranslator is a collection of two tools available to download, containing t
 ## Key Features
 
 *   **Basic Interface:** You have an easy way of setting up the tools mentioned above, having a simple terminal interface.
-*   **Automatic:** The services translates presets and .png character cards automatically without having to replace manually descriptions, system messages, prefills and many more.
+*   **Automatic:** The tool translates presets and .png character cards automatically without having to replace manually descriptions, system messages, prefills and many more.
 
 * **Supported languages:** 
   * 🇷🇺 Russian
