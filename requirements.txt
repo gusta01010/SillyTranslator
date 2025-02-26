@@ -1,0 +1,6 @@
+googletrans==4.0.0-rc1
+tkinter
+pillow==9.5.0
+watchdog==3.0.0
+colorama==0.4.6
+typing-extensions==4.7.1
