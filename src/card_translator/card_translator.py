@@ -191,15 +191,6 @@ class CharacterProcessor:
         elif self.translation_service == 'mymemory':
             from lib.mymemory_translator import MyMemoryTranslatorService
             self.translator = MyMemoryTranslatorService()
-        elif self.translation_service == 'linguee':
-            from lib.linguee_translator import LingueeTranslatorService
-            self.translator = LingueeTranslatorService()
-        elif self.translation_service == 'pons':
-            from lib.pons_translator import PonsTranslatorService
-            self.translator = PonsTranslatorService()
-        elif self.translation_service == 'libre':
-            from lib.libre_translator import LibreTranslatorService
-            self.translator = LibreTranslatorService()
         else:
             from lib.free_translator import GoogleTranslatorService
             self.translator = GoogleTranslatorService()
