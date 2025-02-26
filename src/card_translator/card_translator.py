@@ -394,7 +394,7 @@ class CharacterProcessor:
         text = re.sub(r'(\w+)\s+(-n[ao]s?\b)', r'\1\2', text)
         return text
 
-    def proteger_e_traduzir(self, texto, orig_char_name=None):  # novo: aceita nome original
+    def proteger_e_traduzir(self, texto, orig_char_name=None):
         if not isinstance(texto, str) or not texto.strip():
             return texto
             
@@ -405,63 +405,59 @@ class CharacterProcessor:
         placeholders = {}
         ph_counter = 0
         
-        # Função para substituir conteúdo entre delimitadores (*, ", etc.)
+        # Função para substituir conteúdo entre delimitadores
         def substituir_delimitado(match):
             nonlocal ph_counter
-            delim_inicio = match.group(1)  # Delimitador de início
-            conteudo = match.group(2)      # Conteúdo entre delimitadores
-            delim_fim = match.group(3)     # Delimitador de fim (pode ser igual ao início)
+            delim_inicio = match.group(1)
+            conteudo = match.group(2)
+            delim_fim = match.group(3)
             
-            # Traduzir o conteúdo interno
             try:
                 traduzido = self.translator.translate(conteudo, dest=self.target_lang).text
-                # Criar token único
                 token = f"__PLACEHOLDER_{ph_counter}__"
-                # Armazenar com delimitadores originais
                 placeholders[token] = f"{delim_inicio}{traduzido}{delim_fim}"
                 ph_counter += 1
                 return token
             except Exception as e:
                 print(self.get_text('debug.translation_error_delimited').format(e))
-                # Se falhar, manter o texto original
                 return f"{delim_inicio}{conteudo}{delim_fim}"
         
-        # Processamento para asteriscos: *texto*
-        def processar_asteriscos(texto):
-            return re.sub(r'(\*)(.+?)(\*)', substituir_delimitado, texto)
+        # Processamento dos delimitadores
+        texto = re.sub(r'(\*)(.+?)(\*)', substituir_delimitado, texto)
+        texto = re.sub(r'(")(.+?)(")', substituir_delimitado, texto)
+        if self.translate_parentheses:
+            texto = re.sub(r'(\()(.+?)(\))', substituir_delimitado, texto)
+        if self.translate_brackets:
+            texto = re.sub(r'(\[)(.+?)(\])', substituir_delimitado, texto)
         
-        # Processamento para aspas: "texto"
-        def processar_aspas(texto):
-            return re.sub(r'(")(.+?)(")', substituir_delimitado, texto)
+        # Armazenar as posições de todas as tags angle
+        angle_tags = []
         
-        # Processamento para parênteses: (texto), se opção habilitada
-        def processar_parenteses(texto):
-            if not self.translate_parentheses:
-                return texto
-            return re.sub(r'(\()(.+?)(\))', substituir_delimitado, texto)
+        # Encontrar e salvar todas as tags angle
+        for match in re.finditer(r'<(user|char|assistant)>', texto):
+            tag_full = match.group(0)
+            tag_type = match.group(1)
+            placeholder = f"__ANGLE_TAG_{len(angle_tags)}__"
+            angle_tags.append((placeholder, tag_full, tag_type))
+            texto = texto.replace(tag_full, placeholder, 1)
         
-        # Processamento para colchetes: [texto], se opção habilitada
-        def processar_colchetes(texto):
-            if not self.translate_brackets:
-                return texto
-            return re.sub(r'(\[)(.+?)(\])', substituir_delimitado, texto)
-        
-        # Aplicar os processamentos em sequência, do mais interno ao mais externo
-        # Ordem: primeiro asteriscos/aspas, depois parênteses/colchetes
-        texto = processar_asteriscos(texto)
-        texto = processar_aspas(texto)
-        texto = processar_parenteses(texto)
-        texto = processar_colchetes(texto)
-        
-        # Preserve placeholder tags by temporarily replacing them
-        # Use Jane or original character name based on setting
+        # Configurar placeholder para o personagem
         char_placeholder = "Jane" if self.use_jane else (orig_char_name if orig_char_name else "{{char}}")
+        
+        # Substituir tags com chaves
         texto = texto.replace("{{user}}'s", "James's")
         texto = texto.replace("{{char}}'s", f"{char_placeholder}'s")
         texto = texto.replace("{{user}}", "James")
         texto = texto.replace("{{char}}", char_placeholder)
-            
-        # Translate the main text
+        
+        # Substituir placeholders das tags angle por James ou char_placeholder
+        for placeholder, _, tag_type in angle_tags:
+            if tag_type == 'user':
+                texto = texto.replace(placeholder, "James")
+            else:  # char ou assistant
+                texto = texto.replace(placeholder, char_placeholder)
+        
+        # Traduzir o texto principal
         try:
             translated = self.translator.translate(texto, dest=self.target_lang).text
             if translated is None:
@@ -472,22 +468,39 @@ class CharacterProcessor:
 
         if self.target_lang == 'pt':
             translated = self.fix_portuguese_pronouns(translated)
-                
-        # novo: restaurar placeholders usando nome do personagem
+        
+        # Restaurar placeholders usando nome do personagem
         char_rep = "Jane" if self.use_jane else (orig_char_name if orig_char_name is not None else "{{char}}")
         translated = translated.replace("Jane's", f"{char_rep}'s")
         translated = translated.replace("Jane", char_rep)
         texto = texto.replace("Jane's", f"{char_rep}'s")
         texto = texto.replace("Jane", char_rep)
-        # Removemos ou não alteramos <user> ou <char> para preservar esta exceção
-
-        # Restore placeholder tags
+        
+        # Restaurar tags com chaves
         translated = translated.replace("James's", "{{user}}'s")
         translated = translated.replace(f"{char_placeholder}'s", "{{char}}'s")
         translated = translated.replace("James", "{{user}}")
         translated = translated.replace(char_placeholder, "{{char}}")
-
-        # Restore the individually translated segments
+        
+        # Restaurar as tags angle brackets
+        # Primeiro, substitua ocorrências de "James" e char_placeholder por placeholders
+        for placeholder, _, tag_type in angle_tags:
+            if tag_type == 'user':
+                if "James" in translated:
+                    translated = translated.replace("James", placeholder, 1)
+                elif "{{user}}" in translated:  # Caso James já tenha sido substituído
+                    translated = translated.replace("{{user}}", placeholder, 1)
+            else:  # char ou assistant
+                if char_placeholder in translated:
+                    translated = translated.replace(char_placeholder, placeholder, 1)
+                elif "{{char}}" in translated:  # Caso char_placeholder já tenha sido substituído
+                    translated = translated.replace("{{char}}", placeholder, 1)
+        
+        # Agora substitua os placeholders pelas tags originais
+        for placeholder, original_tag, _ in angle_tags:
+            translated = translated.replace(placeholder, original_tag)
+        
+        # Restaurar os segmentos traduzidos individualmente
         for token, replacement in placeholders.items():
             if token in translated:
                 translated = translated.replace(token, replacement)
@@ -499,7 +512,7 @@ class CharacterProcessor:
         remaining = placeholder_pattern.findall(translated)
         if remaining:
             print(self.get_text('debug.placeholders_unswapped').format(remaining))
-            
+        
         return translated
 
     def fix_spacing_around_tags(self, text):
