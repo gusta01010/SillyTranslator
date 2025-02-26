@@ -186,23 +186,23 @@ class CharacterProcessor:
 
     def set_translator_service(self):
         if self.translation_service == 'google':
-            from lib.free_translator import FreeTranslator
-            self.translator = FreeTranslator()
+            from lib.free_translator import GoogleTranslatorService
+            self.translator = GoogleTranslatorService()
         elif self.translation_service == 'mymemory':
             from lib.mymemory_translator import MyMemoryTranslatorService
             self.translator = MyMemoryTranslatorService()
-        elif self.translation_service == 'yandex':
-            from lib.yandex_translator import YandexTranslator
-            self.translator = YandexTranslator()
         elif self.translation_service == 'linguee':
-            from lib.linguee_translator import LingueeTranslator
-            self.translator = LingueeTranslator()
+            from lib.linguee_translator import LingueeTranslatorService
+            self.translator = LingueeTranslatorService()
         elif self.translation_service == 'pons':
-            from lib.pons_translator import PonsTranslator
-            self.translator = PonsTranslator()
+            from lib.pons_translator import PonsTranslatorService
+            self.translator = PonsTranslatorService()
+        elif self.translation_service == 'libre':
+            from lib.libre_translator import LibreTranslatorService
+            self.translator = LibreTranslatorService()
         else:
-            from lib.free_translator import FreeTranslator
-            self.translator = FreeTranslator()
+            from lib.free_translator import GoogleTranslatorService
+            self.translator = GoogleTranslatorService()
 
     def save_translation_settings(self):
         self.translation_settings.update({
@@ -701,7 +701,7 @@ def configure_translation_service(processor):
     services = {
         '1': 'google',
         '2': 'mymemory',
-        '3': 'yandex',
+        '3': 'libre',
         '4': 'linguee',
         '5': 'pons'
     }
