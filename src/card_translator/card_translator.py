@@ -41,9 +41,9 @@ TARGET_TEMPLATE = {
         "modified": None,
         "source": None,
         "tool": {
-            "name": "AI Character Editor",
-            "version": "0.5.0",
-            "url": "https://zoltanai.github.io/character-editor/"
+            "name": "Card Translator",
+            "version": "1.0.0",
+            "url": "https://github.com/gusta01010/SillyTranslate/"
         }
     }
 }
