@@ -159,6 +159,7 @@ class CharacterProcessor:
             print(f"Erro ao carregar banco de dados: {e}")
         return {}
 
+    
     def load_translation_settings(self):
         default_settings = {
             'target_lang': 'pt',
@@ -166,7 +167,10 @@ class CharacterProcessor:
             'translate_name': False,
             'interface_lang': 'pt',
             'translation_service': 'google',
-            'characters_dir': ''
+            'characters_dir': '',
+            'translate_parentheses': False,  # novo
+            'translate_brackets': False,      # novo
+            'use_jane': False  # novo
         }
         try:
             if TRANSLATION_SETTINGS_FILE.exists():
@@ -177,12 +181,16 @@ class CharacterProcessor:
         TRANSLATION_SETTINGS_FILE.write_text(json.dumps(default_settings, indent=2))
         return default_settings
 
+    
     def apply_translation_settings(self):
         self.target_lang = self.translation_settings.get('target_lang', 'pt')
         self.translate_name = self.translation_settings.get('translate_name', False)
         self.translate_angle = self.translation_settings.get('translate_angle', False)
         self.translation_service = self.translation_settings.get('translation_service', 'google')
         self.interface_lang = self.translation_settings.get('interface_lang', 'pt')
+        self.translate_parentheses = self.translation_settings.get('translate_parentheses', False)  # novo
+        self.translate_brackets = self.translation_settings.get('translate_brackets', False)  
+        self.use_jane = self.translation_settings.get('use_jane', False)  # novo
 
     def set_translator_service(self):
         if self.translation_service == 'google':
@@ -202,7 +210,10 @@ class CharacterProcessor:
             'translate_name': self.translate_name,
             'interface_lang': self.interface_lang,
             'translation_service': self.translation_service,
-            'characters_dir': self.characters_dir
+            'characters_dir': self.characters_dir,
+            'translate_parentheses': self.translate_parentheses,  # novo
+            'translate_brackets': self.translate_brackets,         # novo
+            'use_jane': self.use_jane  # novo
         })
         TRANSLATION_SETTINGS_FILE.write_text(json.dumps(self.translation_settings, indent=2))
 
@@ -309,7 +320,7 @@ class CharacterProcessor:
                     char_data.update(self.flatten_json(json_data))
                     return char_data
                 except Exception as e:
-                    print(f"Erro ao decodificar {field}: {e}")
+                    print(self.get_text('debug.decoding_error').format(field, e))
         return None
 
     def flatten_json(self, data):
@@ -375,51 +386,120 @@ class CharacterProcessor:
         
         return text
 
-    def proteger_e_traduzir(self, texto):
+    # Novo método para corrigir pronomes especiais em português
+    def fix_portuguese_pronouns(self, text):
+        # Remove espaços antes de pronomes com hífen
+        text = re.sub(r'(\w+)\s+(-[ao]s?\b)', r'\1\2', text)
+        text = re.sub(r'(\w+)\s+(-l[ao]s?\b)', r'\1\2', text)
+        text = re.sub(r'(\w+)\s+(-n[ao]s?\b)', r'\1\2', text)
+        return text
+
+    def proteger_e_traduzir(self, texto, orig_char_name=None):  # novo: aceita nome original
         if not isinstance(texto, str) or not texto.strip():
             return texto
             
         # Corrige chaves malformadas antes da tradução
         texto = self.fix_malformed_brackets(texto)
         
-        # Substituir placeholders por nomes temporários e preservar 's
-        texto = texto.replace("{{user}}'s", "James's")
-        texto = texto.replace("{{char}}'s", "Jane's")
-        texto = texto.replace("{{user}}", "James")
-        texto = texto.replace("{{char}}", "Jane")
-        texto = texto.replace("<user>", "James")
-        texto = texto.replace("<char>", "Jane")
+        # Pré-processamento: substituição de blocos entre * ou " ou () ou []
+        placeholders = {}
+        ph_counter = 0
+        
+        # Função para substituir conteúdo entre delimitadores (*, ", etc.)
+        def substituir_delimitado(match):
+            nonlocal ph_counter
+            delim_inicio = match.group(1)  # Delimitador de início
+            conteudo = match.group(2)      # Conteúdo entre delimitadores
+            delim_fim = match.group(3)     # Delimitador de fim (pode ser igual ao início)
             
+            # Traduzir o conteúdo interno
+            try:
+                traduzido = self.translator.translate(conteudo, dest=self.target_lang).text
+                # Criar token único
+                token = f"__PLACEHOLDER_{ph_counter}__"
+                # Armazenar com delimitadores originais
+                placeholders[token] = f"{delim_inicio}{traduzido}{delim_fim}"
+                ph_counter += 1
+                return token
+            except Exception as e:
+                print(self.get_text('debug.translation_error_delimited').format(e))
+                # Se falhar, manter o texto original
+                return f"{delim_inicio}{conteudo}{delim_fim}"
+        
+        # Processamento para asteriscos: *texto*
+        def processar_asteriscos(texto):
+            return re.sub(r'(\*)(.+?)(\*)', substituir_delimitado, texto)
+        
+        # Processamento para aspas: "texto"
+        def processar_aspas(texto):
+            return re.sub(r'(")(.+?)(")', substituir_delimitado, texto)
+        
+        # Processamento para parênteses: (texto), se opção habilitada
+        def processar_parenteses(texto):
+            if not self.translate_parentheses:
+                return texto
+            return re.sub(r'(\()(.+?)(\))', substituir_delimitado, texto)
+        
+        # Processamento para colchetes: [texto], se opção habilitada
+        def processar_colchetes(texto):
+            if not self.translate_brackets:
+                return texto
+            return re.sub(r'(\[)(.+?)(\])', substituir_delimitado, texto)
+        
+        # Aplicar os processamentos em sequência, do mais interno ao mais externo
+        # Ordem: primeiro asteriscos/aspas, depois parênteses/colchetes
+        texto = processar_asteriscos(texto)
+        texto = processar_aspas(texto)
+        texto = processar_parenteses(texto)
+        texto = processar_colchetes(texto)
+        
+        # Preserve placeholder tags by temporarily replacing them
+        # Use Jane or original character name based on setting
+        char_placeholder = "Jane" if self.use_jane else (orig_char_name if orig_char_name else "{{char}}")
+        texto = texto.replace("{{user}}'s", "James's")
+        texto = texto.replace("{{char}}'s", f"{char_placeholder}'s")
+        texto = texto.replace("{{user}}", "James")
+        texto = texto.replace("{{char}}", char_placeholder)
+            
+        # Translate the main text
         try:
             translated = self.translator.translate(texto, dest=self.target_lang).text
             if translated is None:
                 return texto
         except Exception as e:
-            print(f"Erro na tradução: {str(e)}")
+            print(self.get_text('debug.translation_error').format(e))
             return texto
-            
-        # Reverter substituições preservando o 's
+
+        if self.target_lang == 'pt':
+            translated = self.fix_portuguese_pronouns(translated)
+                
+        # novo: restaurar placeholders usando nome do personagem
+        char_rep = "Jane" if self.use_jane else (orig_char_name if orig_char_name is not None else "{{char}}")
+        translated = translated.replace("Jane's", f"{char_rep}'s")
+        translated = translated.replace("Jane", char_rep)
+        texto = texto.replace("Jane's", f"{char_rep}'s")
+        texto = texto.replace("Jane", char_rep)
+        # Removemos ou não alteramos <user> ou <char> para preservar esta exceção
+
+        # Restore placeholder tags
         translated = translated.replace("James's", "{{user}}'s")
-        translated = translated.replace("Jane's", "{{char}}'s")
+        translated = translated.replace(f"{char_placeholder}'s", "{{char}}'s")
         translated = translated.replace("James", "{{user}}")
-        translated = translated.replace("Jane", "{{char}}")
+        translated = translated.replace(char_placeholder, "{{char}}")
+
+        # Restore the individually translated segments
+        for token, replacement in placeholders.items():
+            if token in translated:
+                translated = translated.replace(token, replacement)
+            else:
+                pattern = re.compile(re.escape(token), re.IGNORECASE)
+                translated = pattern.sub(replacement, translated)
         
-        # Corrige novamente chaves malformadas após a tradução
-        translated = self.fix_malformed_brackets(translated)
-        
-        # Ajustar espaçamento e pontuação
-        translated = self.fix_spacing_around_tags(translated)
-        translated = self.fix_punctuation_spacing(translated)
-        
-        # New: Ajustar consistência dos backticks com base no original
-        translated = self.adjust_backticks_consistency(texto, translated)
-        
-        # New: Remove spaces between backticks based on the pattern (e.g. `` ` becomes ```)
-        translated = self.adjust_backticks_spacing(translated)
-        
-        # New: Ajustar case do texto traduzido para respeitar o original
-        translated = self.adjust_translation_case(texto, translated)
-        
+        placeholder_pattern = re.compile(r'__Placeholder_\d+__', re.IGNORECASE)
+        remaining = placeholder_pattern.findall(translated)
+        if remaining:
+            print(self.get_text('debug.placeholders_unswapped').format(remaining))
+            
         return translated
 
     def fix_spacing_around_tags(self, text):
@@ -506,16 +586,20 @@ class CharacterProcessor:
         original_metadata_name = raw_data.get('name') or raw_data.get('char_name') or original_name
 
         if self.translate_name:
-            template_data['char_name'] = self.proteger_e_traduzir(template_data['char_name'])
+            template_data['char_name'] = self.proteger_e_traduzir(template_data['char_name'], orig_char_name=original_metadata_name)
             template_data['name'] = template_data['char_name']
         else:
             template_data['name'] = original_name
+
+        # novo: alterna entre usar "Jane" ou o nome original
+        if self.use_jane:
+            template_data['name'] = "Jane"
 
         for field in TARGET_TEMPLATE:
             if field != 'metadata' and template_data[field]:
                 if field == 'name' and not self.translate_name:
                     continue  # Skip translating the name if disabled
-                template_data[field] = self.proteger_e_traduzir(template_data[field])
+                template_data[field] = self.proteger_e_traduzir(template_data[field], orig_char_name=original_metadata_name)
 
         # Safety check: if name translation is disabled but the name changed, restore original
         if not self.translate_name and template_data['name'].lower() != original_metadata_name.lower():
@@ -683,7 +767,29 @@ def configure_translation_language(processor):
         processor.translate_angle = True
     elif choice and choice in processor.get_text('prompts.no')[0].lower():
         processor.translate_angle = False
-    
+
+    # NOVAS PERGUNTAS para conteúdo entre parênteses e colchetes
+    current_translate_parentheses = processor.get_text('prompts.yes') if processor.translate_parentheses else processor.get_text('prompts.no')
+    choice = input(f"{processor.get_text('prompts.translate_parentheses_keep').format(current_translate_parentheses)}: ").lower()
+    if choice and choice in processor.get_text('prompts.yes')[0].lower():
+        processor.translate_parentheses = True
+    elif choice and choice in processor.get_text('prompts.no')[0].lower():
+        processor.translate_parentheses = False
+
+    current_translate_brackets = processor.get_text('prompts.yes') if processor.translate_brackets else processor.get_text('prompts.no')
+    choice = input(f"{processor.get_text('prompts.translate_brackets_keep').format(current_translate_brackets)}: ").lower()
+    if choice and choice in processor.get_text('prompts.yes')[0].lower():
+        processor.translate_brackets = True
+    elif choice and choice in processor.get_text('prompts.no')[0].lower():
+        processor.translate_brackets = False
+
+    current_use_jane = processor.get_text('prompts.yes') if processor.use_jane else processor.get_text('prompts.no')
+    choice = input(f"{processor.get_text('prompts.use_jane_keep').format(current_use_jane)}: ").lower()
+    if choice and choice in processor.get_text('prompts.yes')[0].lower():
+        processor.use_jane = True
+    elif choice and choice in processor.get_text('prompts.no')[0].lower():
+        processor.use_jane = False
+
     processor.save_translation_settings()
     processor.apply_translation_settings()
 
