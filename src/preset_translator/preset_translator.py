@@ -40,7 +40,7 @@ class Config:
         except:
             # File does not exist: create default config using system language or fallback to English
             try:
-                sys_lang = locale.getdefaultlocale()[0]
+                sys_lang = locale.getlocale()[0]
                 default_lang = sys_lang[:2] if sys_lang else "en"
             except:
                 default_lang = "en"
