@@ -1,5 +1,6 @@
 SillyTranslator translates SillyTavern presets and character cards metadata automatically
 
+![alt text](https://files.catbox.moe/gv9j3i.png "Title")
 
 ## What is SillyTranslator
 
