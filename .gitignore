@@ -15,10 +15,13 @@ ENV/
 
 # Arquivos de backup originais do SillyTranslate
 Original/
+Originals/
 
 # Arquivos de configuração local
 config.json
 settings.ini
+translation_settings.json
+translation_db.json
 
 # Logs
 *.log
