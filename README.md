@@ -3,7 +3,7 @@ SillyTranslator translates SillyTavern presets and character cards metadata auto
 ![alt text](https://files.catbox.moe/gv9j3i.png "Card Message")
 
 <p align="center">
-  <img src="[caminho/para/sua/imagem.png](https://files.catbox.moe/2hhlx7.png)" alt="Card Description">
+  <img src="https://files.catbox.moe/2hhlx7.png" alt="Card Description">
 </p>
 
 ## What is SillyTranslator
