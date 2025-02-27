@@ -125,66 +125,6 @@ def apply_case(text, case_type):
         return text.lower()
     return text
 
-def split_into_chunks(text, max_chunk_size=20):
-    """Divide o texto em chunks respeitando \n, placeholders e separadores."""
-    if not text:
-        return []
-    
-    # Primeiro divide por quebras de linha
-    chunks = []
-    current_chunk = ""
-    i = 0
-    while i < len(text):
-        if text[i:i+1] == '\n':
-            if current_chunk:
-                chunks.append(current_chunk.strip())
-                current_chunk = ""
-            chunks.append('\n')
-            i += 1
-        else:
-            current_chunk += text[i]
-            i += 1
-    if current_chunk:
-        chunks.append(current_chunk.strip())
-    
-    # Processa cada chunk que não é \n
-    final_chunks = []
-    for chunk in chunks:
-        if chunk == '\n':
-            final_chunks.append('\n')
-            continue
-            
-        # Divide pelos separadores mencionados, mas protege placeholders
-        separators = r'([\.,:;])'
-        segments = re.split(separators, chunk)
-        
-        current_chunk = ""
-        for segment in segments:
-            if not segment:
-                continue
-                
-            # Verifica se o segmento contém placeholders
-            if "__PLACEHOLDER_" in segment:
-                if current_chunk:
-                    final_chunks.append(current_chunk.strip())
-                    current_chunk = ""
-                final_chunks.append(segment.strip())
-                continue
-                
-            # Evita que o próximo chunk comece com vírgula
-            if current_chunk and segment.strip().startswith(','):
-                current_chunk += segment
-            elif len(current_chunk) + len(segment) <= max_chunk_size or not current_chunk:
-                current_chunk += segment
-            else:
-                final_chunks.append(current_chunk.strip())
-                current_chunk = segment
-                
-        if current_chunk:
-            final_chunks.append(current_chunk.strip())
-            
-    return final_chunks
-
 def split_camel_case(text):
     # Separa palavras coladas no estilo CamelCase
     return re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', text)
@@ -326,6 +266,120 @@ def translate_braces_content(text, tradutor, lang_destino):
 
     return re.sub(r'{([^}]+)}', replace_with_translation, text)
 
+def split_into_chunks(text, max_chunk_size=20):
+    """Divide o texto em chunks respeitando \n, placeholders, parênteses, colchetes e separadores."""
+    if not text:
+        return []
+    
+    # Primeiro divide por quebras de linha
+    chunks = []
+    current_chunk = ""
+    i = 0
+    while i < len(text):
+        if text[i:i+1] == '\n':
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+                current_chunk = ""
+            chunks.append('\n')
+            i += 1
+        else:
+            current_chunk += text[i]
+            i += 1
+    if current_chunk:
+        chunks.append(current_chunk.strip())
+    
+    # Processa cada chunk que não é \n
+    intermediate_chunks = []
+    for chunk in chunks:
+        if chunk == '\n':
+            intermediate_chunks.append('\n')
+            continue
+            
+        # Extrai parênteses e colchetes completos como chunks separados
+        processed_chunk = ""
+        i = 0
+        while i < len(chunk):
+            if chunk[i] == '(' or chunk[i] == '[':
+                # Se já temos conteúdo antes do delimitador, o adicionamos como chunk
+                if processed_chunk.strip():
+                    intermediate_chunks.append(processed_chunk.strip())
+                    processed_chunk = ""
+                
+                # Determina o delimitador de fechamento correspondente
+                opening_delimiter = chunk[i]
+                closing_delimiter = ')' if opening_delimiter == '(' else ']'
+                
+                # Encontra o delimitador de fechamento correspondente e lida com aninhamento
+                delimiter_level = 1
+                start_pos = i
+                i += 1
+                while i < len(chunk) and delimiter_level > 0:
+                    if chunk[i] == opening_delimiter:
+                        delimiter_level += 1
+                    elif chunk[i] == closing_delimiter:
+                        delimiter_level -= 1
+                    i += 1
+                
+                if delimiter_level == 0:  # Encontrou o delimitador de fechamento
+                    # Adiciona o conteúdo com delimitadores como um chunk separado
+                    intermediate_chunks.append(chunk[start_pos:i])
+                else:  # Não encontrou fechamento, trata como texto normal
+                    processed_chunk += chunk[start_pos:i]
+            else:
+                processed_chunk += chunk[i]
+                i += 1
+        
+        if processed_chunk.strip():
+            intermediate_chunks.append(processed_chunk.strip())
+    
+    # Processa novamente para dividir por separadores (.,;:)
+    final_chunks = []
+    for chunk in intermediate_chunks:
+        if chunk == '\n' or (chunk.startswith('(') and chunk.endswith(')')) or (chunk.startswith('[') and chunk.endswith(']')):
+            final_chunks.append(chunk)
+            continue
+            
+        # Divide pelos separadores mencionados, mas protege placeholders
+        separators = r'([\.,:;])'
+        segments = re.split(separators, chunk)
+        
+        current_chunk = ""
+        for segment in segments:
+            if not segment:
+                continue
+                
+            # Verifica se o segmento contém placeholders
+            if "__PLACEHOLDER_" in segment:
+                if current_chunk:
+                    final_chunks.append(current_chunk.strip())
+                    current_chunk = ""
+                final_chunks.append(segment.strip())
+                continue
+                
+            # Evita que o próximo chunk comece com vírgula
+            if current_chunk and segment.strip().startswith(','):
+                current_chunk += segment
+            elif len(current_chunk) + len(segment) <= max_chunk_size or not current_chunk:
+                current_chunk += segment
+            else:
+                final_chunks.append(current_chunk.strip())
+                current_chunk = segment
+                
+        if current_chunk:
+            final_chunks.append(current_chunk.strip())
+            
+    return final_chunks
+
+def preservar_case_chunk(chunk_original, chunk_traduzido):
+    """Preserva o case do chunk original na tradução."""
+    # Se o chunk original é todo maiúsculo, converte a tradução para maiúsculo
+    if chunk_original.isupper():
+        return chunk_traduzido.upper()
+    # Se o chunk original é todo minúsculo, converte a tradução para minúsculo
+    elif chunk_original.islower():
+        return chunk_traduzido.lower()
+    return chunk_traduzido
+
 def proteger_e_traduzir(texto, tradutor, lang_destino, translate_angle=True, precise_mode=True, max_chunk_size=12):
     if not isinstance(texto, str) or not texto.strip():
         return texto
@@ -354,7 +408,7 @@ def proteger_e_traduzir(texto, tradutor, lang_destino, translate_angle=True, pre
             resultado.append(segmento)
             continue
         
-        # Divide o texto em chunks respeitando \n e separadores
+        # Divide o texto em chunks respeitando \n, parênteses, colchetes e separadores
         chunks = split_into_chunks(segmento, max_chunk_size)
         
         for chunk in chunks:
@@ -370,8 +424,14 @@ def proteger_e_traduzir(texto, tradutor, lang_destino, translate_angle=True, pre
                 # Pequena pausa para evitar limitações de API
                 time.sleep(0.2)
                 
+                # Guarda o chunk original para preservar o case
+                chunk_original = chunk
+                
                 traducao = tradutor.translate(chunk, dest=lang_destino).text
-                print (traducao)
+                print(traducao)
+                
+                # Preserva o case baseado no chunk original (tudo maiúsculo ou minúsculo)
+                traducao = preservar_case_chunk(chunk_original, traducao)
                 
                 # Correção de capitalização baseada em pontuação
                 traducao = fix_capitalization(traducao)
@@ -406,6 +466,27 @@ def proteger_e_traduzir(texto, tradutor, lang_destino, translate_angle=True, pre
     
     texto_final = ''.join(resultado)
     
+    # Adiciona espaço após sequências de ? ou ! se não houver (??aqui -> ?? aqui)
+    texto_final = re.sub(r'([?!]+)([^\s?!])', r'\1 \2', texto_final)
+    
+    # Remove espaços antes de pontuações (.,;:)
+    texto_final = re.sub(r'\s+([.,;:])', r'\1', texto_final)
+    
+    # Garante espaço após pontuações (exceto antes de ] ) ou outra pontuação)
+    texto_final = re.sub(r'([.,;:])([^\s.,;:\]\)\n])', r'\1 \2', texto_final)
+    
+    # Remove espaços entre pontuação e fechamento de colchetes/parênteses
+    texto_final = re.sub(r'([.,;:])\s+([)\]])', r'\1\2', texto_final)
+    
+    # Remove espaços antes de fechamento de colchetes ou parênteses
+    texto_final = re.sub(r'\s+([)\]])', r'\1', texto_final)
+    
+    # Remove espaços após abertura de colchetes ou parênteses
+    texto_final = re.sub(r'([\([])\s+', r'\1', texto_final)
+
+    # Une palavras separadas por hífen (força -tarefa -> força-tarefa)
+    texto_final = re.sub(r'(\w+)\s+-\s*(\w+)', r'\1-\2', texto_final)
+
     # Restaura substituições
     texto_final = texto_final.replace("Jane", "{{char}}")
     texto_final = texto_final.replace("James", "{{user}}")
