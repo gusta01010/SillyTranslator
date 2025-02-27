@@ -1,5 +1,8 @@
 SillyTranslator translates SillyTavern presets and character cards metadata automatically
 
+![alt text](https://files.catbox.moe/gv9j3i.png "Title")
+
+<img src="https://files.catbox.moe/2hhlx7.png" alt="drawing" width="600"/>
 
 ## What is SillyTranslator
 
@@ -71,7 +74,7 @@ Feel free to open an issue on GitHub or send me a direct message on Discord:
 
 *   Discord: sonic\_8783
 
-## Screenshots
+## Image: Prompt comparison - English to Portuguese Brazil
 
 
 ## License
