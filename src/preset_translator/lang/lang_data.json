@@ -26,7 +26,8 @@
         "not_configured": "Not set",
         "window_title": "Preset Translator",
         "select_json_original": "Select original JSON file",
-        "success": "Success"
+        "success": "Success",
+        "loading": "Loading:"
     },
     "pt": {
         "json_filetype": "Arquivos JSON",
@@ -55,7 +56,8 @@
         "not_configurado": "Não configurado",
         "window_title": "Tradutor de Presets",
         "select_json_original": "Selecione o arquivo JSON original",
-        "success": "Sucesso"
+        "success": "Sucesso",
+        "loading": "Carregando:"
     },
     "ru": {
         "json_filetype": "JSON-файлы",
@@ -84,7 +86,8 @@
         "not_configurado": "Не настроено",
         "window_title": "Переводчик пресетов",
         "select_json_original": "Выберите исходный JSON-файл",
-        "success": "Успех"
+        "success": "Успех",
+        "loading": "Загрузка:"
     },
     "ja": {
         "json_filetype": "JSONファイル",
@@ -113,7 +116,8 @@
         "not_configurado": "未設定",
         "window_title": "プリセット翻訳ツール",
         "select_json_original": "元のJSONファイルを選択",
-        "success": "成功"
+        "success": "成功",
+        "loading": "読み込み中："
     },
     "zh-cn": {
         "json_filetype": "JSON文件",
@@ -142,7 +146,8 @@
         "not_configurado": "未设置",
         "window_title": "预设翻译器",
         "select_json_original": "选择原始JSON文件",
-        "success": "成功"
+        "success": "成功",
+        "loading": "加载中："
     },
     "ko": {
         "json_filetype": "JSON 파일",
@@ -171,7 +176,8 @@
         "not_configurado": "미설정",
         "window_title": "프리셋 번역기",
         "select_json_original": "원본 JSON 파일 선택",
-        "success": "성공"
+        "success": "성공",
+        "loading": "로딩 중:"
     },
     "it": {
         "json_filetype": "File JSON",
@@ -200,7 +206,8 @@
         "not_configurado": "Non configurato",
         "window_title": "Traduttore di Preset",
         "select_json_original": "Seleziona il file JSON originale",
-        "success": "Successo"
+        "success": "Successo",
+        "loading": "Caricamento:"
     },
     "fr": {
         "json_filetype": "Fichiers JSON",
@@ -229,7 +236,8 @@
         "not_configurado": "Non configuré",
         "window_title": "Traducteur de Préréglages",
         "select_json_original": "Sélectionnez le fichier JSON d'origine",
-        "success": "Succès"
+        "success": "Succès",
+        "loading": "Chargement:"
     },
     "de": {
         "json_filetype": "JSON-Dateien",
@@ -258,7 +266,8 @@
         "not_configurado": "Nicht konfiguriert",
         "window_title": "Preset-Übersetzer",
         "select_json_original": "Wählen Sie die ursprüngliche JSON-Datei",
-        "success": "Erfolg"
+        "success": "Erfolg",
+        "loading": "Laden:"
     },
     "es": {
         "json_filetype": "Archivos JSON",
@@ -287,6 +296,7 @@
         "not_configurado": "No configurado",
         "window_title": "Traductor de Presets",
         "select_json_original": "Selecciona el archivo JSON original",
-        "success": "Éxito"
+        "success": "Éxito",
+        "loading": "Cargando:"
     }
 }
