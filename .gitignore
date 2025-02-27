@@ -23,6 +23,9 @@ settings.ini
 translation_settings.json
 translation_db.json
 
+#Arquivos de teste
+test*.py
+
 # Logs
 *.log
 
