@@ -648,7 +648,7 @@ class TranslationEngine:
 
         return result
 
-    def translate_text(self, text, target_lang, translate_angle=False, precise_mode=False):
+    def translate_text(self, text, target_lang, translate_angle=False):
         """
         Main translation function with formatting preservation.
 
@@ -656,7 +656,6 @@ class TranslationEngine:
             text: The text to translate
             target_lang: Target language code
             translate_angle: Whether to translate content in angle brackets
-            precise_mode: Whether to use more precise (but slower) translation mode
 
         Returns:
             Translated text with preserved formatting
@@ -672,17 +671,6 @@ class TranslationEngine:
 
         # Replace variables with placeholders
         processed_text = self.protect_variables(processed_text)
-
-        # Handle content in braces if precise mode is enabled
-        if precise_mode:
-            processed_text = self.protect_and_translate_braces(processed_text, target_lang)
-            # Restore code blocks
-            processed_text = self.restore_code_blocks(processed_text, code_blocks)
-            # Final post-processing and variable restoration
-            final_text = self.formatter.adjust_punctuation_spacing(processed_text)
-            final_text = self.restore_variables(final_text)
-            final_text = self.formatter.preserve_spacing(original_text, final_text)
-            return final_text
 
         # Split text by segments that should be preserved intact
         segments = re.split(r'(\s*\{\{.*?\}\}\'?s?\s*|\s*\{.*?\}|<.*?>\'?s?\s*|__CODE_BLOCK_\d+__|__INLINE_CODE_\d+__)', processed_text)
@@ -781,7 +769,7 @@ class TranslationEngine:
         
         return final_text
 
-    def translate_json(self, data, target_lang, translate_angle=False, precise_mode=False, on_progress=None):
+    def translate_json(self, data, target_lang, translate_angle=False, on_progress=None):
         """
         Recursively translates fields in a JSON structure.
 
@@ -789,7 +777,6 @@ class TranslationEngine:
             data: JSON data structure (dict or list)
             target_lang: Target language code
             translate_angle: Whether to translate content in angle brackets
-            precise_mode: Whether to use more precise translation mode
             on_progress: Callback function for progress updates
 
         Returns:
@@ -831,7 +818,7 @@ class TranslationEngine:
 
                         try:
                             data[key] = self.translate_text(
-                                value, target_lang, translate_angle, precise_mode)
+                                value, target_lang, translate_angle)
                             translated_fields += 1
 
                             if on_progress:
@@ -918,14 +905,6 @@ class TranslatorApp:
         self.angle_checkbox.pack(pady=(5, 0), anchor=tk.W)
         self.translate_angle_var.trace('w', self.save_angle_preference)
 
-        # Precise mode option
-        self.precise_mode_var = tk.BooleanVar(value=False)
-        self.precise_checkbox = ttk.Checkbutton(
-            lang_frame,
-            text="Precise Mode",
-            variable=self.precise_mode_var
-        )
-        self.precise_checkbox.pack(pady=(5, 0), anchor=tk.W)
 
         # Save location options
         save_frame = ttk.Frame(top_frame)
@@ -1105,7 +1084,6 @@ class TranslatorApp:
                 break
 
         translate_angle = self.translate_angle_var.get()
-        precise_mode = self.precise_mode_var.get()
         save_location = self.save_location_var.get()
 
         self.progress_bar['value'] = 0
@@ -1113,12 +1091,12 @@ class TranslatorApp:
 
         translation_thread = threading.Thread(
             target=self.translate_selected_files,
-            args=(selected_files, target_language_code, translate_angle, precise_mode, save_location)
+            args=(selected_files, target_language_code, translate_angle, save_location)
         )
 
         translation_thread.start()
 
-    def translate_selected_files(self, files, target_lang, translate_angle, precise_mode, save_location):
+    def translate_selected_files(self, files, target_lang, translate_angle, save_location):
         """Translates selected JSON files and saves them."""
         total_files = len(files)
 
@@ -1144,7 +1122,7 @@ class TranslatorApp:
                     self.root.update_idletasks()
 
                 translated_data = self.engine.translate_json(
-                    data, target_lang, translate_angle, precise_mode, update_progress)
+                    data, target_lang, translate_angle, update_progress)
 
                 # Determine save path
                 if save_location == "custom":
