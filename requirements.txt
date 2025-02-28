@@ -1,7 +1,10 @@
 googletrans==4.0.0-rc1
-tkinter
-langdetect
-pillow==9.5.0
-watchdog==3.0.0
+langdetect==1.0.9
 colorama==0.4.6
 typing-extensions==4.7.1
+Pillow==9.5.0
+watchdog==3.0.0
+requests==2.31.0
+chardet==5.2.0 
+python-dotenv==1.0.0
+exiftool==0.5.5 
