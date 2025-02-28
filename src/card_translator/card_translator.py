@@ -14,52 +14,15 @@ from colorama import init, Fore, Style
 from typing import Dict, Any
 import tkinter as tk
 from tkinter import filedialog
-init()
 
-# Configurações
+init(autoreset=True)  # Initialize colorama
+
+# Configuration
 CHARACTERS_DIR = Path(r"E:\Games\SillyTavern-1.12.11\data\default-user\characters")
 ORIGINAL_DIR = Path(".\\Original")
 DB_FILE = Path(".\\translation_db.json")
 TRANSLATION_SETTINGS_FILE = Path(".\\translation_settings.json")
 INTERFACE_LANG_FILE = Path(".\\lang\\interface_languages.json")
-
-TARGET_TEMPLATE = {
-    "char_name": "",
-    "char_persona": "",
-    "world_scenario": "",
-    "char_greeting": "",
-    "example_dialogue": "",
-    "name": "",
-    "description": "",
-    "personality": "",
-    "scenario": "",
-    "first_mes": "",
-    "mes_example": "",
-    "metadata": {
-        "version": 1,
-        "created": None,
-        "modified": None,
-        "source": None,
-        "tool": {
-            "name": "Card Translator",
-            "version": "1.0.0",
-            "url": "https://github.com/gusta01010/SillyTranslate/"
-        }
-    }
-}
-
-FIELD_MAPPING = {
-    'char_name': ['name', 'data.name', 'char_name', 'spec.name'],
-    'name': ['name', 'data.name', 'char_name', 'spec.name'],
-    'char_persona': ['description', 'data.description'],
-    'world_scenario': ['scenario', 'data.scenario'],
-    'char_greeting': ['first_mes', 'data.first_mes'],
-    'example_dialogue': ['mes_example', 'data.mes_example'],
-    'description': ['description', 'data.description'],
-    'scenario': ['scenario', 'data.scenario'],
-    'first_mes': ['first_mes', 'data.first_mes'],
-    'mes_example': ['mes_example', 'data.mes_example']
-}
 
 LANGUAGES = {
     'pt': 'Português',
@@ -124,14 +87,20 @@ PLACEHOLDER_MAP = {
         'キャラクターの': "char's"
     },
     'zh-cn': {
+        '用户': 'user',
+        '角色': 'char',
         '用户的': "user's",
         '角色的': "char's"
     },
     'ko': {
+        '사용자': 'user',
+        '캐릭터': 'char',
         '사용자의': "user's",
         '캐릭터의': "char's"
     },
     'ru': {
+        'пользователь': 'user',
+        'персонаж': 'char',
         'пользователя': "user's",
         'персонажа': "char's"
     }
@@ -147,18 +116,25 @@ class CharacterProcessor:
         self.monitoring = False
         self.interface_texts = self.load_interface_texts()
         self.characters_dir = self.translation_settings.get('characters_dir', '')
-
+        
+        # Patterns to exclude from translation
+        self.excluded_patterns = [
+            r'!\[.*?\]\(.*?\)',  # Image links
+            r'https?://\S+',     # URLs
+            r'www\.\S+',         # www URLs
+            r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',  # Email addresses
+        ]
+    
     def setup_dirs(self):
         ORIGINAL_DIR.mkdir(exist_ok=True, parents=True)
 
     def load_db(self):
         try:
             if DB_FILE.exists():
-                return json.loads(DB_FILE.read_text())
+                return json.loads(DB_FILE.read_text(encoding='utf-8'))
         except Exception as e:
-            print(f"Erro ao carregar banco de dados: {e}")
+            print(f"Error loading database: {e}")
         return {}
-
     
     def load_translation_settings(self):
         default_settings = {
@@ -168,19 +144,18 @@ class CharacterProcessor:
             'interface_lang': 'pt',
             'translation_service': 'google',
             'characters_dir': '',
-            'translate_parentheses': False,  # novo
-            'translate_brackets': False,      # novo
-            'use_jane': False  # novo
+            'translate_parentheses': False,
+            'translate_brackets': False,
+            'use_jane': False
         }
         try:
             if TRANSLATION_SETTINGS_FILE.exists():
-                return json.loads(TRANSLATION_SETTINGS_FILE.read_text())
+                return json.loads(TRANSLATION_SETTINGS_FILE.read_text(encoding='utf-8'))
         except Exception as e:
-            print(f"Erro ao carregar configurações: {e}")
+            print(f"Error loading settings: {e}")
         
         TRANSLATION_SETTINGS_FILE.write_text(json.dumps(default_settings, indent=2))
         return default_settings
-
     
     def apply_translation_settings(self):
         self.target_lang = self.translation_settings.get('target_lang', 'pt')
@@ -188,9 +163,9 @@ class CharacterProcessor:
         self.translate_angle = self.translation_settings.get('translate_angle', False)
         self.translation_service = self.translation_settings.get('translation_service', 'google')
         self.interface_lang = self.translation_settings.get('interface_lang', 'pt')
-        self.translate_parentheses = self.translation_settings.get('translate_parentheses', False)  # novo
-        self.translate_brackets = self.translation_settings.get('translate_brackets', False)  
-        self.use_jane = self.translation_settings.get('use_jane', False)  # novo
+        self.translate_parentheses = self.translation_settings.get('translate_parentheses', False)
+        self.translate_brackets = self.translation_settings.get('translate_brackets', False)
+        self.use_jane = self.translation_settings.get('use_jane', False)
 
     def set_translator_service(self):
         if self.translation_service == 'google':
@@ -211,9 +186,9 @@ class CharacterProcessor:
             'interface_lang': self.interface_lang,
             'translation_service': self.translation_service,
             'characters_dir': self.characters_dir,
-            'translate_parentheses': self.translate_parentheses,  # novo
-            'translate_brackets': self.translate_brackets,         # novo
-            'use_jane': self.use_jane  # novo
+            'translate_parentheses': self.translate_parentheses,
+            'translate_brackets': self.translate_brackets,
+            'use_jane': self.use_jane
         })
         TRANSLATION_SETTINGS_FILE.write_text(json.dumps(self.translation_settings, indent=2))
 
@@ -221,27 +196,16 @@ class CharacterProcessor:
         with open(file_path, 'rb') as f:
             return hashlib.md5(f.read()).hexdigest()
 
-    def process_existing_files(self):
-        print(f"\n{self.get_text('debug.processing_existing')}")
-        for file in CHARACTERS_DIR.glob('*.png'):
-            if file.name not in self.db or self.db[file.name] != self.get_file_hash(file):
-                self.process_character(file)
-
-    def save_db(self):
+    def extract_character_data(self, image_path):
+        """Extract character data from PNG image using exiftool"""
         try:
-            DB_FILE.write_text(json.dumps(self.db, indent=2))
-        except Exception as e:
-            print(self.get_text('debug.db_save_error').format(e))
-
-    def extract_metadata(self, image_path):
-        try:
-            # Set encoding to UTF-8 and capture stderr
             startupinfo = None
             if os.name == 'nt':
                 startupinfo = subprocess.STARTUPINFO()
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             
-            cmd = ['magick', 'identify', '-verbose', str(image_path)]
+            # Use exiftool to extract the chara property
+            cmd = ['exiftool', '-b', '-chara', str(image_path)]
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -252,413 +216,614 @@ class CharacterProcessor:
             )
             stdout, stderr = process.communicate()
             
-            if process.returncode != 0:
-                print(self.get_text('debug.metadata_error').format(stderr))
+            if process.returncode != 0 or not stdout:
+                print(f"Error extracting character data: {stderr}")
                 return None
-                
-            if not stdout:
-                print(self.get_text('debug.no_metadata').format(image_path))
-                return None
-                
-            return self.parse_metadata(stdout)
             
+            # Decode base64 and parse JSON
+            decoded_data = base64.b64decode(stdout.strip()).decode('utf-8')
+            char_data = json.loads(decoded_data)
+            
+            return char_data
         except Exception as e:
-            print(f"Erro ao extrair metadados: {str(e)}")
+            print(f"Error extracting character data: {e}")
             return None
 
-    def parse_metadata(self, metadata_str):
-        if not metadata_str:
-            return {}
-            
-        try:
-            metadata = {}
-            stack = []
-            
-            for line in metadata_str.split('\n'):
-                line = line.rstrip()
-                if not line:
-                    continue
-
-                indent = len(line) - len(line.lstrip())
-                line = line.lstrip()
-
-                if ':' not in line:
-                    continue
-
-                key, value = map(str.strip, line.split(':', 1))
-                
-                while stack and stack[-1][1] >= indent:
-                    stack.pop()
-                
-                if value == '':
-                    new_section = {}
-                    if stack:
-                        stack[-1][0][key] = new_section
-                    else:
-                        metadata[key] = new_section
-                    stack.append((new_section, indent))
-                else:
-                    if stack:
-                        stack[-1][0][key] = value
-                    else:
-                        metadata[key] = value
-            
-            return metadata
-            
-        except Exception as e:
-            print(self.get_text('debug.metadata_parse_error').format(e))
-            return {}
-
-    def extract_character_data(self, metadata):
-        char_data = {}
-        for field in ['chara', 'ccv3']:
-            if field in metadata.get('Image', {}).get('Properties', {}):
-                try:
-                    encoded_data = metadata['Image']['Properties'][field]
-                    decoded_data = base64.b64decode(encoded_data).decode('utf-8')
-                    json_data = json.loads(decoded_data)
-                    char_data.update(self.flatten_json(json_data))
-                    return char_data
-                except Exception as e:
-                    print(self.get_text('debug.decoding_error').format(field, e))
-        return None
-
-    def flatten_json(self, data):
-        flat_data = {}
-        for key, value in data.items():
-            if isinstance(value, dict):
-                flat_data.update(self.flatten_json(value))
-            else:
-                flat_data[key] = value
-        return flat_data
-
-    def map_to_template(self, raw_data):
-        template = TARGET_TEMPLATE.copy()
+    def protect_markdown_links(self, text):
+        """Protect markdown image links and URLs from translation"""
+        protected_segments = {}
         
-        for target_field, source_fields in FIELD_MAPPING.items():
-            for source_field in source_fields:
-                if '.' in source_field:
-                    parts = source_field.split('.')
-                    value = raw_data.get(parts[0], {})
-                    for part in parts[1:]:
-                        value = value.get(part, '')
-                else:
-                    value = raw_data.get(source_field, '')
-                
-                if value:
-                    template[target_field] = value
-                    break
-
-        template['name'] = template['char_name']
-        template['metadata']['created'] = raw_data.get('create_date', 1740417962295)
-        template['metadata']['modified'] = raw_data.get('create_date', 1740417962295)
+        for pattern in self.excluded_patterns:
+            def replace_match(match):
+                token = f"__PROTECTED_{len(protected_segments)}__"
+                protected_segments[token] = match.group(0)
+                return token
+            
+            text = re.sub(pattern, replace_match, text)
         
-        return template
+        return text, protected_segments
 
-    def fix_malformed_brackets(self, text):
-        """Corrige chaves malformadas e padroniza os placeholders."""
+    def restore_protected_segments(self, text, protected_segments):
+        """Restore protected segments after translation"""
+        for token, value in protected_segments.items():
+            text = text.replace(token, value)
+        return text
+    
+    def process_formatting_wrappers(self, text):
+        """Recursively process text with nested formatting wrappers"""
+        # Define formatting wrappers in order of precedence (outermost to innermost)
+        formatters = [
+            (r'\[([^\[\]]*)\]', '[', ']'),           # Square brackets
+            (r'\{([^\{\}]*)\}', '{', '}'),           # Curly brackets
+            (r'```([\s\S]*?)```', '```', '```'),     # Code blocks
+            (r'`([^`]*)`', '`', '`'),                # Inline code
+            (r'\(([^\(\)]*)\)', '(', ')'),           # Parentheses
+            (r'"([^"]*)"', '"', '"'),                # Double quotes
+            (r'\*\*(.*?)\*\*', '**', '**'),          # Bold
+            (r'\*(.*?)\*', '*', '*')                 # Italic
+        ]
+        
+        protected_map = {}
+        token_counter = 0
+        
+        # First pass - find all matches and protect them
+        for pattern, start_delim, end_delim in formatters:
+            def process_match(match):
+                nonlocal token_counter
+                inner_content = match.group(1)
+                
+                # Recursively process inner content if needed
+                processed_inner = self.process_formatting_wrappers(inner_content)
+                
+                # Generate a unique token
+                token = f"__FORMAT_{token_counter}__"
+                token_counter += 1
+                
+                # Store the information needed to restore this later
+                protected_map[token] = {
+                    'start_delim': start_delim,
+                    'end_delim': end_delim,
+                    'content': processed_inner
+                }
+                
+                return token
+            
+            text = re.sub(pattern, process_match, text)
+        
+        return text, protected_map
+
+    def restore_protected_segments(self, text, protected_segments):
+        """Restore protected segments after translation"""
+        for token, value in protected_segments.items():
+            text = text.replace(token, value)
+        return text
+
+    def split_by_newlines(self, text):
+        """Split text by newlines and preserve the newline character"""
         if not text:
+            return []
+        
+        segments = []
+        current_position = 0
+        
+        for match in re.finditer(r'\n', text):
+            end_pos = match.start()
+            segment = text[current_position:end_pos]
+            segments.append((segment, '\n'))
+            current_position = match.end()
+        
+        # Add the final segment if there is any text remaining
+        if current_position < len(text):
+            segments.append((text[current_position:], ''))
+        
+        return segments
+
+    def split_by_delimiters(self, text, delim_open, delim_close):
+        """Split text by delimiters with proper handling of multiple occurrences"""
+        if not text:
+            return []
+        
+        result = []
+        current_pos = 0
+        text_length = len(text)
+        
+        while current_pos < text_length:
+            # Find next opening delimiter
+            open_pos = text.find(delim_open, current_pos)
+            
+            if open_pos == -1:
+                # No more opening delimiters, add remaining text
+                if current_pos < text_length:
+                    result.append((text[current_pos:], None))
+                break
+            
+            # Add text before the opening delimiter
+            if open_pos > current_pos:
+                result.append((text[current_pos:open_pos], None))
+            
+            # Find matching closing delimiter
+            close_pos = text.find(delim_close, open_pos + len(delim_open))
+            if close_pos == -1:
+                # No matching closing delimiter, treat as regular text
+                result.append((text[open_pos:], None))
+                break
+            
+            # Extract the delimited content including delimiters
+            delimited_content = text[open_pos:close_pos + len(delim_close)]
+            result.append((delimited_content, (delim_open, delim_close)))
+            
+            # Move position past the closing delimiter
+            current_pos = close_pos + len(delim_close)
+        
+        return result
+
+    def process_placeholders(self, text, char_name=None):
+        """Process {{user}} and {{char}} placeholders before translation"""
+        processed_text = text
+        placeholders = {}
+        
+        # Mark all placeholders with unique IDs
+        for i, match in enumerate(re.finditer(r'\{\{(\w+)(?:\'s)?\}\}', text)):
+            full_match = match.group(0)
+            placeholder_token = f"__PH_{i}__"
+            placeholders[placeholder_token] = full_match
+            processed_text = processed_text.replace(full_match, placeholder_token, 1)
+        
+        # Replace special placeholders with translation-friendly text
+        char_replacement = "Jane" if self.use_jane else (char_name if char_name else "{{char}}")
+        
+        for token, original in placeholders.items():
+            if "{{user}}'s" in original:
+                processed_text = processed_text.replace(token, "James's")
+            elif "{{char}}'s" in original:
+                processed_text = processed_text.replace(token, f"{char_replacement}'s")
+            elif "{{user}}" in original:
+                processed_text = processed_text.replace(token, "James")
+            elif "{{char}}" in original or "{{assistant}}" in original:
+                processed_text = processed_text.replace(token, char_replacement)
+        
+        return processed_text, placeholders
+
+    def restore_placeholders(self, text, placeholders, char_name=None):
+        """Restore {{user}} and {{char}} placeholders after translation"""
+        restored_text = text
+        
+        # First, replace any direct translations of the placeholder texts
+        char_replacement = "Jane" if self.use_jane else (char_name if char_name else "{{char}}")
+        
+        restored_text = restored_text.replace("James's", "{{user}}'s")
+        restored_text = restored_text.replace(f"{char_replacement}'s", "{{char}}'s")
+        restored_text = restored_text.replace("James", "{{user}}")
+        restored_text = restored_text.replace(char_replacement, "{{char}}")
+        
+        # Then restore any remaining placeholder tokens
+        for token, original in placeholders.items():
+            restored_text = restored_text.replace(token, original)
+        
+        return restored_text
+    
+    def translate_with_placeholders(self, text, char_name=None):
+        """Translate text with placeholder handling"""
+        if not text or not text.strip():
             return text
             
-        # Primeiro remove chaves duplicadas
+        # Process placeholders
+        processed_text, placeholders = self.process_placeholders(text, char_name)
+        
+        try:
+            translated = self.translator.translate(processed_text, dest=self.target_lang).text
+            if translated is None:
+                return text
+        except Exception as e:
+            print(f"Translation error: {e}")
+            return text
+        
+        # Restore placeholders
+        final_text = self.restore_placeholders(translated, placeholders, char_name)
+        final_text = self.fix_special_characters(final_text)
+        
+        return final_text
+    
+    def restore_formatting(self, text, protected_map):
+        """Restore formatting wrappers to translated text"""
+        result = text
+        
+        # Keep restoring until no more tokens are found
+        while any(token in result for token in protected_map):
+            for token, info in protected_map.items():
+                if token in result:
+                    # If inner content has its own token, restore that first
+                    inner_content = info['content']
+                    replacement = f"{info['start_delim']}{inner_content}{info['end_delim']}"
+                    result = result.replace(token, replacement)
+        
+        return result
+    
+    def fix_malformed_brackets(self, text):
+        """Fix and standardize placeholder brackets"""
+        if not text:
+            return text
+        
+        # Remove duplicate braces
         text = re.sub(r'\{{2,}', '{{', text)
         text = re.sub(r'\}{2,}', '}}', text)
         
-        # Corrige espaços extras dentro das chaves e garante que tenha exatamente duas chaves
+        # Fix spacing inside braces
         text = re.sub(r'\{+\s*(\w+)\s*\}+', r'{{\1}}', text)
         
-        # Substitui variações de assistant por char
+        # Standardize assistant to char
         text = re.sub(r'\{\{?\s*assistant\s*\}?\}', '{{char}}', text, flags=re.IGNORECASE)
         
-        # Corrige palavras traduzidas dentro das chaves usando o PLACEHOLDER_MAP
-        def replace_placeholder(match):
-            inner_text = match.group(1).lower().strip()
-            for lang_map in PLACEHOLDER_MAP.values():
-                if inner_text in lang_map:
-                    return '{{' + lang_map[inner_text] + '}}'
-            return '{{' + inner_text + '}}'
-            
-        text = re.sub(r'\{\{?\s*(\w+)\s*\}?\}', replace_placeholder, text)
-        
-        # Garante que não haja chaves duplicadas no resultado final
+        # Ensure no duplicate braces
         text = re.sub(r'\{{2,}', '{{', text)
         text = re.sub(r'\}{2,}', '}}', text)
         
         return text
-
-    # Novo método para corrigir pronomes especiais em português
-    def fix_portuguese_pronouns(self, text):
-        # Remove espaços antes de pronomes com hífen
-        text = re.sub(r'(\w+)\s+(-[ao]s?\b)', r'\1\2', text)
-        text = re.sub(r'(\w+)\s+(-l[ao]s?\b)', r'\1\2', text)
-        text = re.sub(r'(\w+)\s+(-n[ao]s?\b)', r'\1\2', text)
-        return text
-
-    def proteger_e_traduzir(self, texto, orig_char_name=None):
-        if not isinstance(texto, str) or not texto.strip():
-            return texto
-            
-        # Corrige chaves malformadas antes da tradução
-        texto = self.fix_malformed_brackets(texto)
+    
+    def translate_inner_segment(self, text, char_name=None):
+        """Translate the inner content of a segment without delimiters"""
+        if not text or not text.strip():
+            return text
         
-        # Pré-processamento: substituição de blocos entre * ou " ou () ou []
-        placeholders = {}
-        ph_counter = 0
+        # Protect markdown links and other patterns
+        protected_text, protected_segments = self.protect_markdown_links(text)
         
-        # Função para substituir conteúdo entre delimitadores
-        def substituir_delimitado(match):
-            nonlocal ph_counter
-            delim_inicio = match.group(1)
-            conteudo = match.group(2)
-            delim_fim = match.group(3)
-            
-            try:
-                traduzido = self.translator.translate(conteudo, dest=self.target_lang).text
-                token = f"__PLACEHOLDER_{ph_counter}__"
-                placeholders[token] = f"{delim_inicio}{traduzido}{delim_fim}"
-                ph_counter += 1
-                return token
-            except Exception as e:
-                print(self.get_text('debug.translation_error_delimited').format(e))
-                return f"{delim_inicio}{conteudo}{delim_fim}"
+        # Process placeholders
+        processed_text, placeholders = self.process_placeholders(protected_text, char_name)
         
-        # Processamento dos delimitadores
-        texto = re.sub(r'(\*)(.+?)(\*)', substituir_delimitado, texto)
-        texto = re.sub(r'(")(.+?)(")', substituir_delimitado, texto)
-        if self.translate_parentheses:
-            texto = re.sub(r'(\()(.+?)(\))', substituir_delimitado, texto)
-        if self.translate_brackets:
-            texto = re.sub(r'(\[)(.+?)(\])', substituir_delimitado, texto)
-        
-        # Armazenar as posições de todas as tags angle
-        angle_tags = []
-        
-        # Encontrar e salvar todas as tags angle
-        for match in re.finditer(r'<(user|char|assistant)>', texto):
-            tag_full = match.group(0)
-            tag_type = match.group(1)
-            placeholder = f"__ANGLE_TAG_{len(angle_tags)}__"
-            angle_tags.append((placeholder, tag_full, tag_type))
-            texto = texto.replace(tag_full, placeholder, 1)
-        
-        # Configurar placeholder para o personagem
-        char_placeholder = "Jane" if self.use_jane else (orig_char_name if orig_char_name else "{{char}}")
-        
-        # Substituir tags com chaves
-        texto = texto.replace("{{user}}'s", "James's")
-        texto = texto.replace("{{char}}'s", f"{char_placeholder}'s")
-        texto = texto.replace("{{user}}", "James")
-        texto = texto.replace("{{char}}", char_placeholder)
-        
-        # Substituir placeholders das tags angle por James ou char_placeholder
-        for placeholder, _, tag_type in angle_tags:
-            if tag_type == 'user':
-                texto = texto.replace(placeholder, "James")
-            else:  # char ou assistant
-                texto = texto.replace(placeholder, char_placeholder)
-        
-        # Traduzir o texto principal
+        # Perform translation
         try:
-            translated = self.translator.translate(texto, dest=self.target_lang).text
+            translated = self.translator.translate(processed_text, dest=self.target_lang).text
             if translated is None:
-                return texto
+                return text
         except Exception as e:
-            print(self.get_text('debug.translation_error').format(e))
-            return texto
+            print(f"Translation error: {e}")
+            return text
+        
+        # Restore placeholders
+        restored_text = self.restore_placeholders(translated, placeholders, char_name)
+        
+        # Restore protected segments
+        final_text = self.restore_protected_segments(restored_text, protected_segments)
+        
+        # Fix any malformed bracket placeholders
+        final_text = self.fix_malformed_brackets(final_text)
+        
+        # Fix special characters like tildes and hyphens
+        final_text = self.fix_special_characters(final_text)
+        
+        return final_text
 
-        if self.target_lang == 'pt':
-            translated = self.fix_portuguese_pronouns(translated)
+    def fix_special_characters(self, text):
+        """Fix special characters like ~ and - according to the requirements"""
+        if not text:
+            return text
         
-        # Restaurar placeholders usando nome do personagem
-        char_rep = "Jane" if self.use_jane else (orig_char_name if orig_char_name is not None else "{{char}}")
-        translated = translated.replace("Jane's", f"{char_rep}'s")
-        translated = translated.replace("Jane", char_rep)
-        texto = texto.replace("Jane's", f"{char_rep}'s")
-        texto = texto.replace("Jane", char_rep)
+        # Fix tildes attached to characters
+        text = re.sub(r'(\S)\s+~', r'\1~', text)
+        text = re.sub(r'~\s+(\S)', r'~\1', text)
         
-        # Restaurar tags com chaves
-        translated = translated.replace("James's", "{{user}}'s")
-        translated = translated.replace(f"{char_placeholder}'s", "{{char}}'s")
-        translated = translated.replace("James", "{{user}}")
-        translated = translated.replace(char_placeholder, "{{char}}")
+        # Fix hyphens with spaces (diferentes padrões para capturar todas as variações)
+        text = re.sub(r'(\w+)\s+-\s+(\w+)', r'\1-\2', text)  # espaço antes e depois
+        text = re.sub(r'(\w+)\s+-(\w+)', r'\1-\2', text)      # espaço só antes
+        text = re.sub(r'(\w+)-\s+(\w+)', r'\1-\2', text)      # espaço só depois
         
-        # Restaurar as tags angle brackets
-        # Primeiro, substitua ocorrências de "James" e char_placeholder por placeholders
-        for placeholder, _, tag_type in angle_tags:
-            if tag_type == 'user':
-                if "James" in translated:
-                    translated = translated.replace("James", placeholder, 1)
-                elif "{{user}}" in translated:  # Caso James já tenha sido substituído
-                    translated = translated.replace("{{user}}", placeholder, 1)
-            else:  # char ou assistant
-                if char_placeholder in translated:
-                    translated = translated.replace(char_placeholder, placeholder, 1)
-                elif "{{char}}" in translated:  # Caso char_placeholder já tenha sido substituído
-                    translated = translated.replace("{{char}}", placeholder, 1)
+        return text
+
+    def translate_segment(self, text, char_name=None):
+        """Translate a segment of text with proper placeholder handling"""
+        if not text or not text.strip():
+            return text
         
-        # Agora substitua os placeholders pelas tags originais
-        for placeholder, original_tag, _ in angle_tags:
-            translated = translated.replace(placeholder, original_tag)
+        # Determine if this segment contains delimiters
+        has_open_delim = False
+        has_close_delim = False
         
-        # Restaurar os segmentos traduzidos individualmente
-        for token, replacement in placeholders.items():
-            if token in translated:
-                translated = translated.replace(token, replacement)
+        for delim_pair in [('**', '**'), ('*', '*'), ('"', '"'), ('(', ')'), ('[', ']')]:
+            open_delim, close_delim = delim_pair
+            if text.startswith(open_delim):
+                has_open_delim = True
+            if text.endswith(close_delim):
+                has_close_delim = True
+        
+        # If this segment has delimiters, extract the inner content
+        if has_open_delim and has_close_delim:
+            # Find the opening and closing delimiters
+            open_delim = None
+            close_delim = None
+            
+            for delim_pair in [('**', '**'), ('*', '*'), ('"', '"'), ('(', ')'), ('[', ']')]:
+                o_delim, c_delim = delim_pair
+                if text.startswith(o_delim) and text.endswith(c_delim):
+                    open_delim = o_delim
+                    close_delim = c_delim
+                    break
+            
+            if open_delim and close_delim:
+                inner_text = text[len(open_delim):-len(close_delim)]
+                translated_inner = self.translate_inner_segment(inner_text, char_name)
+                return f"{open_delim}{translated_inner}{close_delim}"
+        
+        # Regular segment translation
+        return self.translate_inner_segment(text, char_name)
+
+    def process_complex_structure(self, text):
+        """Process complex structures like JSON objects with nested delimiters"""
+        
+        # Regex para detectar padrões complexos de estrutura
+        json_pattern = r'(\[|\{)([^\[\]{}]*?(?:\[|\{.*?\}|\])[^\[\]{}]*?)(\]|\})'
+        
+        # Processa estruturas complexas recursivamente
+        def process_recursively(match):
+            open_bracket = match.group(1)
+            content = match.group(2)
+            close_bracket = match.group(3)
+            
+            # Processa o conteúdo recursivamente
+            processed_content = re.sub(json_pattern, process_recursively, content)
+            
+            # Encontra padrões de atributos-valores (como "character":("texto"))
+            attr_pattern = r'(["\'])(\w+)(["\'])\s*:\s*\(([^()]*(?:\([^()]*\)[^()]*)*)\)'
+            
+            def process_attr_value(attr_match):
+                attr_quote = attr_match.group(1)
+                attr_name = attr_match.group(2)
+                attr_end_quote = attr_match.group(3)
+                attr_value = attr_match.group(4)
+                
+                # Traduz apenas o valor dentro dos parênteses sem os parênteses
+                translated_value = self.translate_segment(attr_value, None)
+                
+                return f'{attr_quote}{attr_name}{attr_end_quote}:({translated_value})'
+            
+            processed_content = re.sub(attr_pattern, process_attr_value, processed_content)
+            
+            return f'{open_bracket}{processed_content}{close_bracket}'
+        
+        # Aplica o processamento recursivo a todo o texto
+        processed_text = re.sub(json_pattern, process_recursively, text)
+        
+        return processed_text
+
+    def translate_text(self, text, char_name=None):
+        """Translate text with special handling for delimiters and line breaks"""
+        if not isinstance(text, str) or not text.strip():
+            return text
+        
+        # Split by newlines first
+        segments = self.split_by_newlines(text)
+        translated_segments = []
+        
+        for segment, newline in segments:
+            # Process segment if it's not empty
+            if segment.strip():
+                # Split by quotes
+                quote_segments = self.split_by_delimiters(segment, '"', '"')
+                translated_quote_parts = []
+                
+                for part, delimiters in quote_segments:
+                    if delimiters:
+                        # This is a quoted part
+                        open_delim, close_delim = delimiters
+                        inner_text = part[len(open_delim):-len(close_delim)]
+                        translated_inner = self.translate_segment(inner_text, char_name)
+                        translated_quote_parts.append(f"{open_delim}{translated_inner}{close_delim}")
+                    else:
+                        # Split by asterisks
+                        asterisk_segments = self.split_by_delimiters(part, '*', '*')
+                        translated_asterisk_parts = []
+                        
+                        for asterisk_part, asterisk_delimiters in asterisk_segments:
+                            if asterisk_delimiters:
+                                # This is an emphasized part
+                                open_delim, close_delim = asterisk_delimiters
+                                inner_text = asterisk_part[len(open_delim):-len(close_delim)]
+                                translated_inner = self.translate_segment(inner_text, char_name)
+                                translated_asterisk_parts.append(f"{open_delim}{translated_inner}{close_delim}")
+                            else:
+                                # Handle parentheses if enabled
+                                if self.translate_parentheses:
+                                    paren_segments = self.split_by_delimiters(asterisk_part, '(', ')')
+                                    translated_paren_parts = []
+                                    
+                                    for paren_part, paren_delimiters in paren_segments:
+                                        if paren_delimiters:
+                                            # This is a parenthesized part
+                                            open_delim, close_delim = paren_delimiters
+                                            inner_text = paren_part[len(open_delim):-len(close_delim)]
+                                            translated_inner = self.translate_segment(inner_text, char_name)
+                                            translated_paren_parts.append(f"{open_delim}{translated_inner}{close_delim}")
+                                        else:
+                                            # Handle brackets if enabled
+                                            if self.translate_brackets:
+                                                bracket_segments = self.split_by_delimiters(paren_part, '[', ']')
+                                                translated_bracket_parts = []
+                                                
+                                                for bracket_part, bracket_delimiters in bracket_segments:
+                                                    if bracket_delimiters:
+                                                        # This is a bracketed part
+                                                        open_delim, close_delim = bracket_delimiters
+                                                        inner_text = bracket_part[len(open_delim):-len(close_delim)]
+                                                        translated_inner = self.translate_segment(inner_text, char_name)
+                                                        translated_bracket_parts.append(f"{open_delim}{translated_inner}{close_delim}")
+                                                    else:
+                                                        # Translate regular text
+                                                        translated_bracket_parts.append(self.translate_segment(bracket_part, char_name))
+                                                
+                                                translated_paren_parts.append(''.join(translated_bracket_parts))
+                                            else:
+                                                # Translate regular text
+                                                translated_paren_parts.append(self.translate_segment(paren_part, char_name))
+                                    
+                                    translated_asterisk_parts.append(''.join(translated_paren_parts))
+                                else:
+                                    # Translate regular text
+                                    translated_asterisk_parts.append(self.translate_segment(asterisk_part, char_name))
+                        
+                        translated_quote_parts.append(''.join(translated_asterisk_parts))
+                
+                translated_segments.append(''.join(translated_quote_parts) + newline)
             else:
-                pattern = re.compile(re.escape(token), re.IGNORECASE)
-                translated = pattern.sub(replacement, translated)
+                # Keep empty segments
+                translated_segments.append(segment + newline)
         
-        placeholder_pattern = re.compile(r'__Placeholder_\d+__', re.IGNORECASE)
-        remaining = placeholder_pattern.findall(translated)
-        if remaining:
-            print(self.get_text('debug.placeholders_unswapped').format(remaining))
-        
-        return translated
+        return ''.join(translated_segments)
 
-    def fix_spacing_around_tags(self, text):
-        # Fix missing spaces after {{char}} or {{user}} when followed by text
-        text = re.sub(r'(\{\{(?:char|user)\}\})([a-zA-Z])', r'\1 \2', text)
-        
-        # Fix missing spaces before {{char}} or {{user}} when preceded by text
-        text = re.sub(r'([a-zA-Z])(\{\{(?:char|user)\}\})', r'\1 \2', text)
-        
-        return text
+    def process_character(self, image_path):
+        """Process a character card for translation"""
+        if image_path.name in self.db:
+            return
 
-    def fix_punctuation_spacing(self, text):
-        # Add space after punctuation if followed by a letter and not already spaced
-        text = re.sub(r'([.,:;!?])([a-zA-Z])', r'\1 \2', text)
+        print(f"{Fore.YELLOW}{self.get_text('debug.processing_file', 'Processing file')}: {image_path.name}{Style.RESET_ALL}")
         
-        # Remove space before punctuation
-        text = re.sub(r'(\s+)([.,:;!?])', r'\2', text)
-    
-        return text
+        # Move the original file to ORIGINAL_DIR
+        original_file = self.move_to_original(image_path)
+        
+        # Extract character data using exiftool
+        char_data = self.extract_character_data(original_file)
+        if not char_data:
+            print(f"{Fore.RED}Failed to extract character data from {original_file}{Style.RESET_ALL}")
+            return
+        
+        # Make a deep copy of the character data for translation
+        translated_data = self.deep_copy_data(char_data)
+        
+        # Get the original character name
+        original_name = self.get_character_name(char_data)
+        if not original_name:
+            original_name = original_file.stem
+        
+        # Translate fields
+        self.translate_character_data(translated_data, original_name)
+        
+        # Save the translated character card
+        self.save_translated_card(original_file, translated_data)
+        
+        # Update the database
+        self.db[original_file.name] = self.get_file_hash(original_file)
+        self.save_db()
+        
+        print(f"{Fore.GREEN}Successfully translated {original_file.name}{Style.RESET_ALL}")
 
-    # New method to adjust backticks consistency using the original text as reference
-    def adjust_backticks_consistency(self, original: str, translated: str) -> str:
-        orig_ticks = list(re.finditer(r'(`+)', original))
-        trans_ticks = list(re.finditer(r'(`+)', translated))
-        if len(orig_ticks) != len(trans_ticks):
-            # fallback: leave translated unchanged if counts differ
-            return translated
-        orig_iter = iter([m.group(0) for m in orig_ticks])
-        return re.sub(r'(`+)', lambda m: next(orig_iter), translated)
-    
-    # New method to adjust the case of words in translated text to match the original
-    def adjust_translation_case(self, original: str, translated: str) -> str:
-        words = set(re.findall(r'\b\w+\b', original))
-        for word in words:
-            # Replace occurrences in translated text with the original-case word if they match ignoring case.
-            translated = re.sub(
-                r'\b' + re.escape(word.lower()) + r'\b',
-                lambda m: word,
-                translated,
-                flags=re.IGNORECASE
-            )
-        return translated
+    def deep_copy_data(self, data):
+        """Make a deep copy of the character data structure"""
+        if isinstance(data, dict):
+            return {k: self.deep_copy_data(v) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [self.deep_copy_data(item) for item in data]
+        else:
+            return data
 
-    # New method to adjust spacing around backticks by removing spaces between groups of backticks
-    def adjust_backticks_spacing(self, text: str) -> str:
-        pattern = re.compile(r'(`+)(\s+)(`+)')
-        prev = None
-        while prev != text:
-            prev = text
-            text = pattern.sub(lambda m: m.group(1) + m.group(3), text)
-        return text
+    def get_character_name(self, data):
+        """Extract character name from the data structure"""
+        if isinstance(data, dict):
+            if 'name' in data:
+                return data['name']
+            elif 'data' in data and isinstance(data['data'], dict) and 'name' in data['data']:
+                return data['data']['name']
+        return None
+
+    def translate_character_data(self, data, original_name):
+        """Translate all relevant fields in the character data"""
+        if not isinstance(data, dict):
+            return
+        
+        # Fields that need to be translated
+        translatable_fields = {
+            'name': self.translate_name,  # Only translate if enabled
+            'description': True,
+            'personality': True,
+            'scenario': True,
+            'first_mes': True,
+            'mes_example': True,
+            'system_prompt': True,
+            'post_history_instructions': True,
+            'creator_notes': True
+        }
+        
+        # Process fields in the root level
+        for field, should_translate in translatable_fields.items():
+            if field in data and isinstance(data[field], str) and should_translate:
+                data[field] = self.translate_text(data[field], original_name)
+        
+        # Process fields in the 'data' dictionary if it exists
+        if 'data' in data and isinstance(data['data'], dict):
+            for field, should_translate in translatable_fields.items():
+                if field in data['data'] and isinstance(data['data'][field], str) and should_translate:
+                    data['data'][field] = self.translate_text(data['data'][field], original_name)
+        
+        # Process alternate_greetings if they exist
+        if 'alternate_greetings' in data and isinstance(data['alternate_greetings'], list):
+            data['alternate_greetings'] = [
+                self.translate_text(greeting, original_name) 
+                for greeting in data['alternate_greetings'] 
+                if isinstance(greeting, str)
+            ]
+        
+        if 'data' in data and 'alternate_greetings' in data['data'] and isinstance(data['data']['alternate_greetings'], list):
+            data['data']['alternate_greetings'] = [
+                self.translate_text(greeting, original_name) 
+                for greeting in data['data']['alternate_greetings'] 
+                if isinstance(greeting, str)
+            ]
 
     def move_to_original(self, image_path):
-        # Se o arquivo ainda não estiver na pasta ORIGINAL_DIR, mova-o
+        """Move the original PNG file to the ORIGINAL_DIR directory"""
         dest = ORIGINAL_DIR / image_path.name
         if not dest.exists():
             try:
                 os.rename(image_path, dest)
-                print(f"{Fore.BLUE}{self.get_text('debug.file_moved').format(image_path.name, ORIGINAL_DIR)}{Style.RESET_ALL}")
+                print(f"{Fore.BLUE}File moved: {image_path.name} to {ORIGINAL_DIR}{Style.RESET_ALL}")
             except Exception as e:
-                print(self.get_text('debug.move_error').format(e))
+                print(f"Error moving file: {e}")
         return dest
 
-    def process_character(self, image_path):
-        if image_path.name in self.db:
-            return
-
-        print(f"{Fore.YELLOW}{self.get_text('debug.processing_file').format(image_path.name)}{Style.RESET_ALL}")
-        # Transfere o arquivo original para a pasta ORIGINAL_DIR
-        original_file = self.move_to_original(image_path)
-
-        metadata = self.extract_metadata(original_file)
-        if not metadata:
-            return
-        raw_data = self.extract_character_data(metadata)
-        if not raw_data:
-            return
-        template_data = self.map_to_template(raw_data)
-        if not template_data['char_name'].strip():
-            template_data['char_name'] = original_file.stem
-
-        original_name = original_file.stem
-        # Capture original name from metadata if exists, fallback to file stem.
-        original_metadata_name = raw_data.get('name') or raw_data.get('char_name') or original_name
-
-        if self.translate_name:
-            template_data['char_name'] = self.proteger_e_traduzir(template_data['char_name'], orig_char_name=original_metadata_name)
-            template_data['name'] = template_data['char_name']
-        else:
-            template_data['name'] = original_name
-
-        # novo: alterna entre usar "Jane" ou o nome original
-        if self.use_jane:
-            template_data['name'] = "Jane"
-
-        for field in TARGET_TEMPLATE:
-            if field != 'metadata' and template_data[field]:
-                if field == 'name' and not self.translate_name:
-                    continue  # Skip translating the name if disabled
-                template_data[field] = self.proteger_e_traduzir(template_data[field], orig_char_name=original_metadata_name)
-
-        # Safety check: if name translation is disabled but the name changed, restore original
-        if not self.translate_name and template_data['name'].lower() != original_metadata_name.lower():
-            template_data['name'] = original_metadata_name
-
-        # Se a opção de não traduzir nomes estiver ligada,
-        # para campos específicos, garanta que a substring que corresponde ao nome permaneça inalterada.
-        if not self.translate_name:
-            for key in ("description", "personality", "char_greeting", "example_dialogue"):
-                if key in template_data and template_data[key]:
-                    # Reverte qualquer tradução da substring do nome do personagem.
-                    pattern = re.compile(re.escape(template_data["name"]), flags=re.IGNORECASE)
-                    template_data[key] = pattern.sub(template_data["name"], template_data[key])
-        
-        self.save_as_json(original_file, template_data)
-        # Remover o JSON temporário do Original, mantendo somente o PNG original
-        json_path = original_file.with_suffix('.json')
-        if json_path.exists():
-            os.remove(json_path)
-        
-        self.embed_metadata(original_file, template_data)
-        self.db[original_file.name] = True
-        self.save_db()
-
-    def embed_metadata(self, original_file, data):
-        json_str = json.dumps(data, ensure_ascii=False, separators=(',', ':'))
-        b64_data = base64.b64encode(json_str.encode('utf-8')).decode('utf-8')
+    def save_translated_card(self, original_file, translated_data):
+        """Save the translated character data as a new PNG file"""
         try:
+            # Nullify 'chat' and 'create_date' fields
+            translated_data['chat'] = None
+            translated_data['create_date'] = None
+            
+            # Convert the data structure to a JSON string
+            json_str = json.dumps(translated_data, ensure_ascii=False, separators=(',', ':'))
+            
+            # Encode the JSON as base64
+            b64_data = base64.b64encode(json_str.encode('utf-8')).decode('utf-8')
+            
+            # Open the original image
             img = Image.open(original_file)
+            
+            # Create PNG metadata container
             meta = PngImagePlugin.PngInfo()
+            
+            # Add the translated data as 'chara' property
             meta.add_text("chara", b64_data)
-            # Salva o arquivo traduzido em CHARACTERS_DIR com o nome original
+            
+            # Save the new image to CHARACTERS_DIR
             new_image_path = CHARACTERS_DIR / original_file.name
             img.save(new_image_path, "PNG", pnginfo=meta)
-            print(f"{Fore.GREEN}{self.get_text('debug.metadata_saved').format(new_image_path)}{Style.RESET_ALL}")
+            
+            print(f"{Fore.GREEN}Translated card saved: {new_image_path}{Style.RESET_ALL}")
         except Exception as e:
-            print(self.get_text('debug.metadata_error_save').format(e))
+            print(f"{Fore.RED}Error saving translated card: {e}{Style.RESET_ALL}")
 
-    def save_as_json(self, image_path, data):
-        json_path = image_path.with_suffix('.json')
-        with open(json_path, 'w', encoding='utf-8') as f:
-            # Altered to output compact JSON in one line
-            f.write(json.dumps(data, ensure_ascii=False, separators=(',', ':')))
-        print(f"{Fore.YELLOW}{self.get_text('debug.json_generated').format(json_path)}{Style.RESET_ALL}")
+    def save_db(self):
+        """Save the translation database"""
+        try:
+            DB_FILE.write_text(json.dumps(self.db, indent=2))
+        except Exception as e:
+            print(f"Error saving database: {e}")
+
+    def process_existing_files(self):
+        """Process all existing character cards in the directory"""
+        print(f"\n{self.get_text('debug.processing_existing', 'Processing existing files')}")
+        for file in CHARACTERS_DIR.glob('*.png'):
+            if file.name not in self.db or self.db[file.name] != self.get_file_hash(file):
+                self.process_character(file)
 
     def load_interface_texts(self) -> Dict[str, Any]:
+        """Load interface texts for the selected language"""
         try:
             if INTERFACE_LANG_FILE.exists():
                 data = json.loads(INTERFACE_LANG_FILE.read_text(encoding='utf-8'))
@@ -681,7 +846,7 @@ class CharacterProcessor:
             return default
 
     def verify_characters_dir(self):
-        """Verifica se o diretório characters é válido"""
+        """Verify if the characters directory is valid"""
         if not self.characters_dir:
             return False
         characters_path = Path(self.characters_dir)
