@@ -10,8 +10,8 @@ SillyTranslator translates SillyTavern presets and character cards metadata auto
 
 SillyTranslator is a collection of two tools available to download, containing two utilities:
 
-1. Preset translator tool
-2. Card monitoring tool
+1. **Preset translator script**
+2. **Card monitoring script**
 
 ## Key Features
 
