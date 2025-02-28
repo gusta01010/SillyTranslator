@@ -80,9 +80,6 @@ Feel free to open an issue on GitHub or send me a direct message on Discord:
 ## Image: Prompt comparison - English to Portuguese
 
 ![alt text](https://files.catbox.moe/ga0w87.png "Preset")
-
-## Meta
-If this project gets 1 star, I'll make sure to add LLM translation!!
  
 ## License
 
