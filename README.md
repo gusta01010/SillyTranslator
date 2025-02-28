@@ -50,7 +50,7 @@ To use the card translator, first you need to follow these steps:
 1. Set up your interface language.
 1. Select the SillyTavern folder **(IMPORTANT!)**.
 3. Set up the translator.
-Setting up the translator is important, as there are two options:
+Setting up the translator is important, as there are four options:
 * **Translate name**: you can translate, the character card name from, for example, `James` (en) to `ジェームズ` (ja) if the option is enabled.
 * **Translate wrapped `<>`**: this one is experimental, you can translate any content inside <>, for example, `<think>` can be translated to `<考える>`
 * **Translate wrapped `()`**: translates content inside parentheses separated from the rest of the text
