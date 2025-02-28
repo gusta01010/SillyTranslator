@@ -35,12 +35,12 @@ SillyTranslator is a collection of two tools available to download, containing t
 ### Preset translator
 To use the preset translator, first you need to follow these steps:
 
-1. Set up the language the preset will be translated to and there is an optional box to select if want to translate content inside <>.
+1. Set up the SillyTavern folder (optional) or use custom folder **(IMPORTANT!)**.
+
+2. Set up the language the preset will be translated to and there is an optional box to select if want to translate content inside <>.
 * **Translate wrapped `<>`**: this one is experimental, you can translate any content inside <>, for example, `<think>` can be translated to `<考える>`
 
-2. Set up the SillyTavern folder (optional) or use custom folder.
-
-3. Select the .JSON file to be translated.
+3. Select the .JSON files to be translated.
 
 4. Name the file and save it.
 
@@ -48,7 +48,7 @@ To use the preset translator, first you need to follow these steps:
 To use the card translator, first you need to follow these steps:
 
 1. Set up your interface language.
-1. Select the SillyTavern folder (IMPORTANT!).
+1. Select the SillyTavern folder **(IMPORTANT!)**.
 3. Set up the translator.
 Setting up the translator is important, as there are two options:
 * **Translate name**: you can translate, the character card name from, for example, `James` (en) to `ジェームズ` (ja) if the option is enabled.
