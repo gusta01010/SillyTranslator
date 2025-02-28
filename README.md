@@ -36,7 +36,7 @@ SillyTranslator is a collection of two tools available to download, containing t
 To use the preset translator, first you need to follow these steps:
 
 1. Set up the language the preset will be translated to and there is an optional box to select if want to translate content inside <>.
-* Translate wrapped <>: this one is experimental, you can translate any content inside <>, for example, `<think>` can be translated to `<考える>`
+* **Translate wrapped `<>`**: this one is experimental, you can translate any content inside <>, for example, `<think>` can be translated to `<考える>`
 
 2. Set up the SillyTavern folder (optional) or use custom folder.
 
@@ -51,10 +51,10 @@ To use the card translator, first you need to follow these steps:
 1. Select the SillyTavern folder (IMPORTANT!).
 3. Set up the translator.
 Setting up the translator is important, as there are two options:
-* Translate name: you can translate, the character card name from, for example, `James` (en) to `ジェームズ` (ja) if the option is enabled.
-* Translate wrapped <>: this one is experimental, you can translate any content inside <>, for example, `<think>` can be translated to `<考える>`
-* Translate wrapped (): translates content inside parentheses separated from the rest of the text
-* Translate wrapped []: translates content inside brackets separated from the rest of the text
+* **Translate name**: you can translate, the character card name from, for example, `James` (en) to `ジェームズ` (ja) if the option is enabled.
+* **Translate wrapped `<>`**: this one is experimental, you can translate any content inside <>, for example, `<think>` can be translated to `<考える>`
+* **Translate wrapped `()`**: translates content inside parentheses separated from the rest of the text
+* **Translate wrapped `[]`**: translates content inside brackets separated from the rest of the text
 * Use Jane (placeholder) instead of {{char}} during translation: Enabling placeholder may improve translation coherence and returns back to {{char}} after the translation is done
   
 4. Select the translation service.
