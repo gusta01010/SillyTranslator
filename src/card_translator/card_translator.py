@@ -230,24 +230,54 @@ class CharacterProcessor:
             return None
 
     def protect_markdown_links(self, text):
-        """Protect markdown image links and URLs from translation"""
+        """Protect markdown image links and URLs from translation with improved handling"""
         protected_segments = {}
+        token_count = 0
         
-        for pattern in self.excluded_patterns:
+        # Padrão específico para links de imagem markdown
+        image_pattern = r'!\[([^\]]*)\]\(([^)]*)\)'
+        
+        # Substituir links de imagem primeiro
+        def replace_image_link(match):
+            nonlocal token_count
+            token = f"__PROTECTED_{token_count}__"
+            token_count += 1
+            
+            # Armazenar o link completo com alt text e URL
+            alt_text = match.group(1)
+            url = match.group(2)
+            protected_segments[token] = {
+                'type': 'image',
+                'alt': alt_text,
+                'url': url,
+                'original': match.group(0)
+            }
+            return token
+        
+        text = re.sub(image_pattern, replace_image_link, text)
+        
+        # Processar outros padrões a serem excluídos da tradução
+        other_patterns = [
+            r'https?://\S+',     # URLs
+            r'www\.\S+',         # www URLs
+            r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',  # Email addresses
+        ]
+        
+        for pattern in other_patterns:
             def replace_match(match):
-                token = f"__PROTECTED_{len(protected_segments)}__"
-                protected_segments[token] = match.group(0)
+                nonlocal token_count
+                token = f"__PROTECTED_{token_count}__"
+                token_count += 1
+                protected_segments[token] = {
+                    'type': 'text',
+                    'content': match.group(0),
+                    'original': match.group(0)
+                }
                 return token
             
             text = re.sub(pattern, replace_match, text)
         
         return text, protected_segments
-
-    def restore_protected_segments(self, text, protected_segments):
-        """Restore protected segments after translation"""
-        for token, value in protected_segments.items():
-            text = text.replace(token, value)
-        return text
     
     def process_formatting_wrappers(self, text):
         """Recursively process text with nested formatting wrappers"""
@@ -293,9 +323,17 @@ class CharacterProcessor:
         return text, protected_map
 
     def restore_protected_segments(self, text, protected_segments):
-        """Restore protected segments after translation"""
-        for token, value in protected_segments.items():
-            text = text.replace(token, value)
+        """Restore protected segments after translation with improved handling"""
+        for token, info in protected_segments.items():
+            if info['type'] == 'image':
+                # Reconstruir o link de imagem com o formato original
+                replacement = f"![{info['alt']}]({info['url']})"
+            else:
+                # Para outros tipos de conteúdo protegido
+                replacement = info['original']
+            
+            text = text.replace(token, replacement)
+        
         return text
 
     def split_by_newlines(self, text):
@@ -503,7 +541,7 @@ class CharacterProcessor:
         text = re.sub(r'(\S)\s+~', r'\1~', text)
         text = re.sub(r'~\s+(\S)', r'~\1', text)
         
-        # Fix hyphens with spaces (diferentes padrões para capturar todas as variações)
+        # Fix hyphens with spaces (capturando todas as variações)
         text = re.sub(r'(\w+)\s+-\s+(\w+)', r'\1-\2', text)  # espaço antes e depois
         text = re.sub(r'(\w+)\s+-(\w+)', r'\1-\2', text)      # espaço só antes
         text = re.sub(r'(\w+)-\s+(\w+)', r'\1-\2', text)      # espaço só depois
@@ -590,84 +628,53 @@ class CharacterProcessor:
         if not isinstance(text, str) or not text.strip():
             return text
         
+        # Protect markdown links and other patterns first
+        protected_text, protected_segments = self.protect_markdown_links(text)
+        
         # Split by newlines first
-        segments = self.split_by_newlines(text)
+        segments = self.split_by_newlines(protected_text)
         translated_segments = []
         
         for segment, newline in segments:
             # Process segment if it's not empty
             if segment.strip():
-                # Split by quotes
-                quote_segments = self.split_by_delimiters(segment, '"', '"')
-                translated_quote_parts = []
+                # Process all delimiters in sequence
+                # Incluindo underscores (_..._) na lista de delimitadores
+                for delim_pair in [('"', '"'), ('**', '**'), ('*', '*'), ('_', '_'), ('(', ')'), ('[', ']')]:
+                    delim_open, delim_close = delim_pair
+                    quote_segments = self.split_by_delimiters(segment, delim_open, delim_close)
+                    processed_parts = []
+                    
+                    for part, delimiters in quote_segments:
+                        if delimiters:
+                            # This is a delimited part
+                            open_delim, close_delim = delimiters
+                            # Extract only inner content
+                            inner_text = part[len(open_delim):-len(close_delim)]
+                            # Recursively process inner content
+                            translated_inner = self.translate_segment(inner_text, char_name)
+                            processed_parts.append(f"{open_delim}{translated_inner}{close_delim}")
+                        else:
+                            processed_parts.append(part)
+                    
+                    # Update segment for next delimiter processing
+                    segment = ''.join(processed_parts)
                 
-                for part, delimiters in quote_segments:
-                    if delimiters:
-                        # This is a quoted part
-                        open_delim, close_delim = delimiters
-                        inner_text = part[len(open_delim):-len(close_delim)]
-                        translated_inner = self.translate_segment(inner_text, char_name)
-                        translated_quote_parts.append(f"{open_delim}{translated_inner}{close_delim}")
-                    else:
-                        # Split by asterisks
-                        asterisk_segments = self.split_by_delimiters(part, '*', '*')
-                        translated_asterisk_parts = []
-                        
-                        for asterisk_part, asterisk_delimiters in asterisk_segments:
-                            if asterisk_delimiters:
-                                # This is an emphasized part
-                                open_delim, close_delim = asterisk_delimiters
-                                inner_text = asterisk_part[len(open_delim):-len(close_delim)]
-                                translated_inner = self.translate_segment(inner_text, char_name)
-                                translated_asterisk_parts.append(f"{open_delim}{translated_inner}{close_delim}")
-                            else:
-                                # Handle parentheses if enabled
-                                if self.translate_parentheses:
-                                    paren_segments = self.split_by_delimiters(asterisk_part, '(', ')')
-                                    translated_paren_parts = []
-                                    
-                                    for paren_part, paren_delimiters in paren_segments:
-                                        if paren_delimiters:
-                                            # This is a parenthesized part
-                                            open_delim, close_delim = paren_delimiters
-                                            inner_text = paren_part[len(open_delim):-len(close_delim)]
-                                            translated_inner = self.translate_segment(inner_text, char_name)
-                                            translated_paren_parts.append(f"{open_delim}{translated_inner}{close_delim}")
-                                        else:
-                                            # Handle brackets if enabled
-                                            if self.translate_brackets:
-                                                bracket_segments = self.split_by_delimiters(paren_part, '[', ']')
-                                                translated_bracket_parts = []
-                                                
-                                                for bracket_part, bracket_delimiters in bracket_segments:
-                                                    if bracket_delimiters:
-                                                        # This is a bracketed part
-                                                        open_delim, close_delim = bracket_delimiters
-                                                        inner_text = bracket_part[len(open_delim):-len(close_delim)]
-                                                        translated_inner = self.translate_segment(inner_text, char_name)
-                                                        translated_bracket_parts.append(f"{open_delim}{translated_inner}{close_delim}")
-                                                    else:
-                                                        # Translate regular text
-                                                        translated_bracket_parts.append(self.translate_segment(bracket_part, char_name))
-                                                
-                                                translated_paren_parts.append(''.join(translated_bracket_parts))
-                                            else:
-                                                # Translate regular text
-                                                translated_paren_parts.append(self.translate_segment(paren_part, char_name))
-                                    
-                                    translated_asterisk_parts.append(''.join(translated_paren_parts))
-                                else:
-                                    # Translate regular text
-                                    translated_asterisk_parts.append(self.translate_segment(asterisk_part, char_name))
-                        
-                        translated_quote_parts.append(''.join(translated_asterisk_parts))
-                
-                translated_segments.append(''.join(translated_quote_parts) + newline)
+                translated_segments.append(segment + newline)
             else:
                 # Keep empty segments
                 translated_segments.append(segment + newline)
         
-        return ''.join(translated_segments)
+        # Join all segments back together
+        result = ''.join(translated_segments)
+        
+        # Restore protected segments
+        result = self.restore_protected_segments(result, protected_segments)
+        
+        # Fix any special characters
+        result = self.fix_special_characters(result)
+        
+        return result
 
     def process_character(self, image_path):
         """Process a character card for translation"""
