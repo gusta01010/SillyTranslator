@@ -278,7 +278,7 @@ class CharacterProcessor:
             text = re.sub(pattern, replace_match, text)
         
         return text, protected_segments
-    
+
     def process_formatting_wrappers(self, text):
         """Recursively process text with nested formatting wrappers"""
         # Define formatting wrappers in order of precedence (outermost to innermost)
@@ -336,65 +336,6 @@ class CharacterProcessor:
         
         return text
 
-    def split_by_newlines(self, text):
-        """Split text by newlines and preserve the newline character"""
-        if not text:
-            return []
-        
-        segments = []
-        current_position = 0
-        
-        for match in re.finditer(r'\n', text):
-            end_pos = match.start()
-            segment = text[current_position:end_pos]
-            segments.append((segment, '\n'))
-            current_position = match.end()
-        
-        # Add the final segment if there is any text remaining
-        if current_position < len(text):
-            segments.append((text[current_position:], ''))
-        
-        return segments
-
-    def split_by_delimiters(self, text, delim_open, delim_close):
-        """Split text by delimiters with proper handling of multiple occurrences"""
-        if not text:
-            return []
-        
-        result = []
-        current_pos = 0
-        text_length = len(text)
-        
-        while current_pos < text_length:
-            # Find next opening delimiter
-            open_pos = text.find(delim_open, current_pos)
-            
-            if open_pos == -1:
-                # No more opening delimiters, add remaining text
-                if current_pos < text_length:
-                    result.append((text[current_pos:], None))
-                break
-            
-            # Add text before the opening delimiter
-            if open_pos > current_pos:
-                result.append((text[current_pos:open_pos], None))
-            
-            # Find matching closing delimiter
-            close_pos = text.find(delim_close, open_pos + len(delim_open))
-            if close_pos == -1:
-                # No matching closing delimiter, treat as regular text
-                result.append((text[open_pos:], None))
-                break
-            
-            # Extract the delimited content including delimiters
-            delimited_content = text[open_pos:close_pos + len(delim_close)]
-            result.append((delimited_content, (delim_open, delim_close)))
-            
-            # Move position past the closing delimiter
-            current_pos = close_pos + len(delim_close)
-        
-        return result
-
     def process_placeholders(self, text, char_name=None):
         """Process {{user}} and {{char}} placeholders before translation"""
         processed_text = text
@@ -440,43 +381,6 @@ class CharacterProcessor:
         
         return restored_text
     
-    def translate_with_placeholders(self, text, char_name=None):
-        """Translate text with placeholder handling"""
-        if not text or not text.strip():
-            return text
-            
-        # Process placeholders
-        processed_text, placeholders = self.process_placeholders(text, char_name)
-        
-        try:
-            translated = self.translator.translate(processed_text, dest=self.target_lang).text
-            if translated is None:
-                return text
-        except Exception as e:
-            print(f"Translation error: {e}")
-            return text
-        
-        # Restore placeholders
-        final_text = self.restore_placeholders(translated, placeholders, char_name)
-        final_text = self.fix_special_characters(final_text)
-        
-        return final_text
-    
-    def restore_formatting(self, text, protected_map):
-        """Restore formatting wrappers to translated text"""
-        result = text
-        
-        # Keep restoring until no more tokens are found
-        while any(token in result for token in protected_map):
-            for token, info in protected_map.items():
-                if token in result:
-                    # If inner content has its own token, restore that first
-                    inner_content = info['content']
-                    replacement = f"{info['start_delim']}{inner_content}{info['end_delim']}"
-                    result = result.replace(token, replacement)
-        
-        return result
-    
     def fix_malformed_brackets(self, text):
         """Fix and standardize placeholder brackets"""
         if not text:
@@ -512,6 +416,7 @@ class CharacterProcessor:
         # Perform translation
         try:
             translated = self.translator.translate(processed_text, dest=self.target_lang).text
+            print (translated)
             if translated is None:
                 return text
         except Exception as e:
@@ -548,134 +453,74 @@ class CharacterProcessor:
         
         return text
 
-    def translate_segment(self, text, char_name=None):
-        """Translate a segment of text with proper placeholder handling"""
-        if not text or not text.strip():
-            return text
-        
-        # Determine if this segment contains delimiters
-        has_open_delim = False
-        has_close_delim = False
-        
-        for delim_pair in [('**', '**'), ('*', '*'), ('"', '"'), ('(', ')'), ('[', ']')]:
-            open_delim, close_delim = delim_pair
-            if text.startswith(open_delim):
-                has_open_delim = True
-            if text.endswith(close_delim):
-                has_close_delim = True
-        
-        # If this segment has delimiters, extract the inner content
-        if has_open_delim and has_close_delim:
-            # Find the opening and closing delimiters
-            open_delim = None
-            close_delim = None
-            
-            for delim_pair in [('**', '**'), ('*', '*'), ('"', '"'), ('(', ')'), ('[', ']')]:
-                o_delim, c_delim = delim_pair
-                if text.startswith(o_delim) and text.endswith(c_delim):
-                    open_delim = o_delim
-                    close_delim = c_delim
-                    break
-            
-            if open_delim and close_delim:
-                inner_text = text[len(open_delim):-len(close_delim)]
-                translated_inner = self.translate_inner_segment(inner_text, char_name)
-                return f"{open_delim}{translated_inner}{close_delim}"
-        
-        # Regular segment translation
-        return self.translate_inner_segment(text, char_name)
-
-    def process_complex_structure(self, text):
-        """Process complex structures like JSON objects with nested delimiters"""
-        
-        # Regex para detectar padrões complexos de estrutura
-        json_pattern = r'(\[|\{)([^\[\]{}]*?(?:\[|\{.*?\}|\])[^\[\]{}]*?)(\]|\})'
-        
-        # Processa estruturas complexas recursivamente
-        def process_recursively(match):
-            open_bracket = match.group(1)
-            content = match.group(2)
-            close_bracket = match.group(3)
-            
-            # Processa o conteúdo recursivamente
-            processed_content = re.sub(json_pattern, process_recursively, content)
-            
-            # Encontra padrões de atributos-valores (como "character":("texto"))
-            attr_pattern = r'(["\'])(\w+)(["\'])\s*:\s*\(([^()]*(?:\([^()]*\)[^()]*)*)\)'
-            
-            def process_attr_value(attr_match):
-                attr_quote = attr_match.group(1)
-                attr_name = attr_match.group(2)
-                attr_end_quote = attr_match.group(3)
-                attr_value = attr_match.group(4)
-                
-                # Traduz apenas o valor dentro dos parênteses sem os parênteses
-                translated_value = self.translate_segment(attr_value, None)
-                
-                return f'{attr_quote}{attr_name}{attr_end_quote}:({translated_value})'
-            
-            processed_content = re.sub(attr_pattern, process_attr_value, processed_content)
-            
-            return f'{open_bracket}{processed_content}{close_bracket}'
-        
-        # Aplica o processamento recursivo a todo o texto
-        processed_text = re.sub(json_pattern, process_recursively, text)
-        
-        return processed_text
-
     def translate_text(self, text, char_name=None):
-        """Translate text with special handling for delimiters and line breaks"""
-        if not isinstance(text, str) or not text.strip():
+        """Função principal de tradução que processa e traduz texto corretamente"""
+        if not text or not isinstance(text, str):
             return text
         
-        # Protect markdown links and other patterns first
-        protected_text, protected_segments = self.protect_markdown_links(text)
+        print(f"Traduzindo: {text[:30]}..." if len(text) > 30 else f"Traduzindo: {text}")
         
-        # Split by newlines first
-        segments = self.split_by_newlines(protected_text)
-        translated_segments = []
+        # Primeiro, capturar e proteger os links e imagens Markdown
+        markdown_pattern = r'!\[.*?\]\(.*?\)|(?<!!)\[.*?\]\(.*?\)'
+        protected_map = {}
+        protected_counter = 0
         
-        for segment, newline in segments:
-            # Process segment if it's not empty
-            if segment.strip():
-                # Process all delimiters in sequence
-                # Incluindo underscores (_..._) na lista de delimitadores
-                for delim_pair in [('"', '"'), ('**', '**'), ('*', '*'), ('_', '_'), ('(', ')'), ('[', ']')]:
-                    delim_open, delim_close = delim_pair
-                    quote_segments = self.split_by_delimiters(segment, delim_open, delim_close)
-                    processed_parts = []
-                    
-                    for part, delimiters in quote_segments:
-                        if delimiters:
-                            # This is a delimited part
-                            open_delim, close_delim = delimiters
-                            # Extract only inner content
-                            inner_text = part[len(open_delim):-len(close_delim)]
-                            # Recursively process inner content
-                            translated_inner = self.translate_segment(inner_text, char_name)
-                            processed_parts.append(f"{open_delim}{translated_inner}{close_delim}")
-                        else:
-                            processed_parts.append(part)
-                    
-                    # Update segment for next delimiter processing
-                    segment = ''.join(processed_parts)
-                
-                translated_segments.append(segment + newline)
+        def protect_markdown(match):
+            nonlocal protected_counter
+            placeholder = f"__Protected_{protected_counter}__"
+            protected_map[placeholder] = match.group(0)
+            protected_counter += 1
+            return placeholder
+        
+        # Substituir todos os padrões markdown por placeholders
+        protected_text = re.sub(markdown_pattern, protect_markdown, text)
+        
+        # Agora dividir o texto em segmentos para tradução
+        segments = []
+        pattern = r'(__Protected_\d+__|\*\*[^*]+\*\*|\*[^*]+\*|__[^_]+__|_[^_]+_|"[^"]+"|[^*"_]+)'
+        
+        for match in re.finditer(pattern, protected_text):
+            segment = match.group(0)
+            
+            # Se for um segmento protegido, adiciona sem traduzir
+            if segment.startswith('__Protected_') and segment.endswith('__'):
+                segments.append(segment)
+            elif segment.startswith('**') and segment.endswith('**'):
+                inner_content = segment[2:-2]
+                translated_content = self.translate_inner_segment(inner_content, char_name)
+                segments.append(f"**{translated_content}**")
+            elif segment.startswith('*') and segment.endswith('*'):
+                inner_content = segment[1:-1]
+                translated_content = self.translate_inner_segment(inner_content, char_name)
+                segments.append(f"*{translated_content}*")
+            elif segment.startswith('__') and segment.endswith('__'):
+                inner_content = segment[2:-2]
+                translated_content = self.translate_inner_segment(inner_content, char_name)
+                segments.append(f"__{translated_content}__")
+            elif segment.startswith('_') and segment.endswith('_'):
+                inner_content = segment[1:-1]
+                translated_content = self.translate_inner_segment(inner_content, char_name)
+                segments.append(f"_{translated_content}_")
+            elif segment.startswith('"') and segment.endswith('"'):
+                inner_content = segment[1:-1]
+                translated_content = self.translate_inner_segment(inner_content, char_name)
+                segments.append(f'"{translated_content}"')
             else:
-                # Keep empty segments
-                translated_segments.append(segment + newline)
+                translated_segment = self.translate_inner_segment(segment, char_name)
+                segments.append(translated_segment)
         
-        # Join all segments back together
-        result = ''.join(translated_segments)
+        # Combine todos os segmentos traduzidos
+        result = ''.join(segments)
         
-        # Restore protected segments
-        result = self.restore_protected_segments(result, protected_segments)
+        # Restaure os marcadores protegidos (links e imagens)
+        for placeholder, original_content in protected_map.items():
+            result = result.replace(placeholder, original_content)
         
-        # Fix any special characters
+        # Aplique correções finais
+        result = self.fix_malformed_brackets(result)
         result = self.fix_special_characters(result)
         
         return result
-
     def process_character(self, image_path):
         """Process a character card for translation"""
         if image_path.name in self.db:
