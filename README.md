@@ -80,7 +80,7 @@ Feel free to open an issue on GitHub or send me a direct message on Discord:
 ## Image: Prompt comparison - English to Portuguese
 
 ![alt text](https://files.catbox.moe/ga0w87.png "Preset")
- 
+###### * The translation may not be 100% accurate.
 ## License
 
 This project is licensed under the [MIT License](./LICENSE) - see the `LICENSE` file for details.
