@@ -3,20 +3,20 @@ SillyTranslator translates SillyTavern presets and character cards metadata auto
 ![alt text](https://files.catbox.moe/gv9j3i.png "Card Message")
 
 <p align="center">
-  <img src="https://files.catbox.moe/2hhlx7.png" alt="Card Description">
+  <img src="https://files.catbox.moe/2hhlx7.png" alt="Card Description" width=600>
 </p>
 
 ## What is SillyTranslator
 
 SillyTranslator is a collection of two tools available to download, containing two utilities:
 
-1. Preset translator tool
-2. Card monitoring tool
+1. **Preset translator script**
+2. **Card monitoring script**
 
 ## Key Features
 
 *   **Basic Interface:** You have an easy way of setting up the tools mentioned above, having a simple terminal interface.
-*   **Automatic:** The tool translates presets and .png character cards automatically without having to replace manually descriptions, system messages, prefills and many more.
+*   **Automatic:** The tool translates presets and .png character cards automatically without having to replace manually descriptions, system messages, prefills and many more resources.
 
 * **Supported languages:** 
   * 🇷🇺 Russian
@@ -80,7 +80,7 @@ Feel free to open an issue on GitHub or send me a direct message on Discord:
 ## Image: Prompt comparison - English to Portuguese
 
 ![alt text](https://files.catbox.moe/ga0w87.png "Preset")
-
+ 
 ## License
 
 This project is licensed under the [MIT License](./LICENSE) - see the `LICENSE` file for details.
