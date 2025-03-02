@@ -7,7 +7,7 @@ import time
 import tkinter as tk
 from tkinter import filedialog, ttk, messagebox
 from googletrans import Translator
-import sys # Import sys for system language detection
+import sys  # Import sys for system language detection
 
 # --- Configuration Constants ---
 CONFIG_FILE = "config.json"
@@ -26,7 +26,7 @@ class TranslationConfig:
 
     def __init__(self):
         self.data = self._load_config()
-        self.full_lang_data = self._load_full_lang_data() # Load the entire lang_data
+        self.full_lang_data = self._load_full_lang_data()  # Load the entire lang_data
         self.languages = self._load_languages()
         self.translations = self._load_translations()
         self.current_lang = self.data.get("last_used_language", "en")
@@ -63,29 +63,28 @@ class TranslationConfig:
                 return json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
             print("Error: Language file not found or malformed.")
-            return {} # Return empty dict in case of error
+            return {}  # Return empty dict in case of error
 
     def _load_languages(self):
         """Loads language codes from JSON file."""
-        languages_data = self.full_lang_data.get("languages", {}) # Get the languages section
+        languages_data = self.full_lang_data.get("languages", {})  # Get the languages section
         if not languages_data:
             print("Error: Language data not found in lang_data.json. Using defaults.")
-            return {"English": "en", "Português": "pt"} # Default if section is missing
+            return {"English": "en", "Português": "pt"}  # Default if section is missing
         return languages_data
-
 
     def _load_translations(self):
         """Loads UI text translations."""
         translations = {}
         for lang_code in self.full_lang_data.keys():
-            if lang_code != "languages" and isinstance(self.full_lang_data[lang_code], dict): # Check if it's a translation section
+            if lang_code != "languages" and isinstance(self.full_lang_data[lang_code],
+                                                       dict):  # Check if it's a translation section
                 translations[lang_code] = self.full_lang_data[lang_code]
 
         if not translations:
             print("Error: No translations found in lang_data.json. Using English.")
-            return {"en": {}} # Default if no translations found
+            return {"en": {}}  # Default if no translations found
         return translations
-
 
     def get_text(self, key):
         """Retrieves translated text for a given key."""
@@ -115,7 +114,7 @@ class TextChunker:
 
         i = 0
         while i < len(text):
-            if text[i:i+1] == '\n':
+            if text[i:i + 1] == '\n':
                 if current_chunk:
                     chunks.append(current_chunk.strip())
                 chunks.append('\n')
@@ -533,6 +532,7 @@ class TextFormatter:
         """Ensures proper capitalization after sentence-ending punctuation."""
         return re.sub(r'([.!?]\s*)([a-z])', lambda m: m.group(1) + m.group(2).upper(), text)
 
+
 class TranslationEngine:
     """Handles the core translation functionality with improved handling of code blocks."""
 
@@ -673,7 +673,9 @@ class TranslationEngine:
         processed_text = self.protect_variables(processed_text)
 
         # Split text by segments that should be preserved intact
-        segments = re.split(r'(\s*\{\{.*?\}\}\'?s?\s*|\s*\{.*?\}|<.*?>\'?s?\s*|__CODE_BLOCK_\d+__|__INLINE_CODE_\d+__)', processed_text)
+        segments = re.split(
+            r'(\s*\{\{.*?\}\}\'?s?\s*|\s*\{.*?\}|<.*?>\'?s?\s*|__CODE_BLOCK_\d+__|__INLINE_CODE_\d+__)',
+            processed_text)
         result = []
 
         for segment in segments:
@@ -745,7 +747,7 @@ class TranslationEngine:
                         if (char in ['.', ',', ';', ':'] and
                                 i + 1 < len(translation) and
                                 not translation[i + 1].isspace() and
-                                translation[i+1] not in [' ', ')', ']', '"', '\'']):
+                                translation[i + 1] not in [' ', ')', ']', '"', '\'']):
                             translation_spaced += ' '
 
                     result.append(translation_spaced.strip())
@@ -757,16 +759,16 @@ class TranslationEngine:
         # Join chunks and apply initial formatting
         final_text = ''.join(result)
         final_text = self.formatter.adjust_punctuation_spacing(final_text)
-        
+
         # Restore code blocks from placeholders
         final_text = self.restore_code_blocks(final_text, code_blocks)
-        
+
         # Restore variables
         final_text = self.restore_variables(final_text)
-        
+
         # Preserve the original spacing patterns
         final_text = self.formatter.preserve_spacing(original_text, final_text)
-        
+
         return final_text
 
     def translate_json(self, data, target_lang, translate_angle=False, on_progress=None):
@@ -782,6 +784,7 @@ class TranslationEngine:
         Returns:
             Translated JSON structure
         """
+
         # Count total translatable fields
         def count_fields(data):
             count = 0
@@ -848,8 +851,32 @@ class TranslatorApp:
         self.root = root
         self.config = TranslationConfig()
         self.engine = TranslationEngine()
-
         self.setup_ui()
+
+    def ask_for_silly_tavern_path(self):
+        """Ask user for SillyTavern root directory."""
+        path = filedialog.askdirectory(
+            title=self.config.get_text("select_silly_dir"),
+            initialdir=os.path.expanduser("~")
+        )
+        if path:
+            # Update path to include the OpenAI Settings folder structure
+            settings_path = os.path.join(path, "data", "default-user", "OpenAI Settings")
+            
+            # Create the directory structure if it doesn't exist
+            os.makedirs(settings_path, exist_ok=True)
+            
+            # Save the root path
+            self.config.data["silly_tavern_path"] = path
+            self.config.save()
+            return True
+        return False
+
+    def save_location_preference(self, *args):
+        """Saves the preferred save location."""
+        new_location = self.save_location_var.get()
+        self.config.data["save_location"] = new_location
+        self.config.save()
 
     def setup_ui(self):
         """Sets up the user interface."""
@@ -876,7 +903,7 @@ class TranslatorApp:
 
         self.lang_combobox = ttk.Combobox(
             lang_frame,
-            values=list(self.config.languages.values()), # Use native language names from config
+            values=list(self.config.languages.values()),  # Use native language names from config
             state="readonly",
             width=30
         )
@@ -884,14 +911,14 @@ class TranslatorApp:
 
         # Set initial language selection using language codes as keys now
         current_lang = self.config.current_lang
-        lang_names = list(self.config.languages.values()) # Native names
-        lang_codes = list(self.config.languages.keys())   # Codes
+        lang_names = list(self.config.languages.values())  # Native names
+        lang_codes = list(self.config.languages.keys())  # Codes
         if current_lang in lang_codes:
-            self.lang_combobox.set(lang_names[lang_codes.index(current_lang)]) # Set by index of code
+            self.lang_combobox.set(lang_names[lang_codes.index(current_lang)])  # Set by index of code
         else:
             # Default to English if last used language is not found
-            self.lang_combobox.set(lang_names[lang_codes.index("en")]) if "en" in lang_codes else self.lang_combobox.set(lang_names[0])
-
+            self.lang_combobox.set(lang_names[lang_codes.index("en")]) if "en" in lang_codes else self.lang_combobox.set(
+                lang_names[0])
 
         self.lang_combobox.bind('<<ComboboxSelected>>', self.update_language)
 
@@ -904,7 +931,6 @@ class TranslatorApp:
         )
         self.angle_checkbox.pack(pady=(5, 0), anchor=tk.W)
         self.translate_angle_var.trace('w', self.save_angle_preference)
-
 
         # Save location options
         save_frame = ttk.Frame(top_frame)
@@ -923,11 +949,10 @@ class TranslatorApp:
         self.custom_radio = ttk.Radiobutton(
             save_frame,
             text=self.config.get_text("save_custom"),
-            variable=self.save_location_var,            value="custom"
+            variable=self.save_location_var, value="custom"
         )
         self.custom_radio.pack(anchor=tk.W)
         self.save_location_var.trace('w', self.save_location_preference)
-
 
         # File selection
         file_frame = ttk.Frame(main_frame)
@@ -941,10 +966,12 @@ class TranslatorApp:
         button_frame = ttk.Frame(file_frame)
         button_frame.pack(side=tk.LEFT, padx=(5, 0))
 
-        select_button = ttk.Button(button_frame, text=self.config.get_text("select_files"), command=self.select_files) # Changed button text to "select_files"
+        select_button = ttk.Button(button_frame, text=self.config.get_text("select_files"),
+                                   command=self.select_files)  # Changed button text to "select_files"
         select_button.pack(pady=2, fill=tk.X)
 
-        remove_button = ttk.Button(button_frame, text=self.config.get_text("remove_button"), command=self.remove_selected_files)
+        remove_button = ttk.Button(button_frame, text=self.config.get_text("remove_button"),
+                                   command=self.remove_selected_files)
         remove_button.pack(pady=2, fill=tk.X)
 
         # Progress bar
@@ -956,7 +983,8 @@ class TranslatorApp:
         self.status_label.pack(pady=(0, 10))
 
         # Translate button
-        self.translate_button = ttk.Button(main_frame, text=self.config.get_text("start_translation"), command=self.start_translation) # Changed button text to "start_translation"
+        self.translate_button = ttk.Button(main_frame, text=self.config.get_text("start_translation"),
+                                           command=self.start_translation)  # Changed button text to "start_translation"
         self.translate_button.pack()
 
         # Bind resize event
@@ -984,12 +1012,11 @@ class TranslatorApp:
         button_frame = self.file_list.master.winfo_children()[1]
         for widget in button_frame.winfo_children():
             if isinstance(widget, ttk.Button):
-                if widget['text'] == "Select JSON files" or widget['text'] == "Selecionar arquivos JSON" or widget['text'] == "Выберите JSON файлы" or widget['text'] == "JSONファイルを選択" or widget['text'] == "选择JSON文件" or widget['text'] == "JSON 파일 선택" or widget['text'] == "Seleziona file JSON" or widget['text'] == "Sélectionner les fichiers JSON" or widget['text'] == "JSON-Dateien auswählen" or widget['text'] == "Seleccionar archivos JSON":
+                if widget == button_frame.winfo_children()[0]:  # First button
                     widget.config(text=self.config.get_text("select_files"))
-                elif widget['text'] == "Remove" or widget['text'] == "Remover" or widget['text'] == "Удалить" or widget['text'] == "削除" or widget['text'] == "移除" or widget['text'] == "제거" or widget['text'] == "Rimuovi" or widget['text'] == "Supprimer" or widget['text'] == "Entfernen" or widget['text'] == "Eliminar":
+                elif widget == button_frame.winfo_children()[1]:  # Second button
                     widget.config(text=self.config.get_text("remove_button"))
         self.translate_button.config(text=self.config.get_text("start_translation"))
-
 
     def on_resize(self, event=None):
         """Handles window resizing."""
@@ -1015,7 +1042,6 @@ class TranslatorApp:
         else:
             print("Error: Selected language not found in language data.")
 
-
     def reload_ui(self):
         """Destroys and recreates UI elements to apply language."""
         for widget in self.root.winfo_children():
@@ -1028,14 +1054,17 @@ class TranslatorApp:
         self.config.data["translate_angle"] = self.translate_angle_var.get()
         self.config.save()
 
-    def save_location_preference(self, *args):
-        """Saves the preferred save location."""
-        self.config.data["save_location"] = self.save_location_var.get()
-        self.config.save()
-
     def select_files(self):
         """Opens file dialog to select JSON files."""
-        initial_dir = self.config.data.get("silly_tavern_path", "")
+        # Set initial directory based on save location
+        if self.save_location_var.get() == "silly" and self.config.data.get("silly_tavern_path"):
+            initial_dir = os.path.join(
+                self.config.data["silly_tavern_path"],
+                "data", "default-user", "OpenAI Settings"
+            )
+        else:
+            initial_dir = os.path.expanduser("~")
+
         if not os.path.isdir(initial_dir):
             initial_dir = os.path.expanduser("~")
 
@@ -1054,12 +1083,6 @@ class TranslatorApp:
             if filename not in self.file_list.get(0, tk.END):
                 self.file_list.insert(tk.END, filename)
 
-            # Save Silly Tavern directory if a file was chosen from there
-            if "SillyTavern" in filename:
-                silly_tavern_path = os.path.dirname(filename)
-                self.config.data["silly_tavern_path"] = silly_tavern_path
-                self.config.save()
-
     def remove_selected_files(self):
         """Removes selected files from the list."""
         selected_indices = self.file_list.curselection()
@@ -1067,7 +1090,7 @@ class TranslatorApp:
             self.file_list.delete(index)
 
     def start_translation(self):
-        """Starts the translation process in a separate thread."""
+        """Starts the translation process, handling SillyTavern path."""
         selected_files = self.file_list.get(0, tk.END)
         if not selected_files:
             messagebox.showwarning(
@@ -1075,6 +1098,12 @@ class TranslatorApp:
                 self.config.get_text("no_files_selected_message")
             )
             return
+
+        # Check for SillyTavern path if saving to SillyTavern
+        save_location = self.save_location_var.get()
+        if save_location == "silly" and not self.config.data["silly_tavern_path"]:
+            if not self.ask_for_silly_tavern_path():
+                return  # Don't proceed if path not set
 
         target_language_native_name = self.lang_combobox.get()
         target_language_code = ""
@@ -1084,7 +1113,6 @@ class TranslatorApp:
                 break
 
         translate_angle = self.translate_angle_var.get()
-        save_location = self.save_location_var.get()
 
         self.progress_bar['value'] = 0
         self.translate_button.config(state=tk.DISABLED)
@@ -1093,7 +1121,6 @@ class TranslatorApp:
             target=self.translate_selected_files,
             args=(selected_files, target_language_code, translate_angle, save_location)
         )
-
         translation_thread.start()
 
     def translate_selected_files(self, files, target_lang, translate_angle, save_location):
@@ -1128,22 +1155,29 @@ class TranslatorApp:
                 if save_location == "custom":
                     save_path = filedialog.asksaveasfilename(
                         defaultextension=".json",
-                        filetypes=((self.config.get_text("json_filetype"), "*.json"), (self.config.get_text("all_filetype"), "*.*")),
+                        filetypes=((self.config.get_text("json_filetype"), "*.json"),
+                                   (self.config.get_text("all_filetype"), "*.*")),
                         initialfile=os.path.basename(file_path),
                         title=self.config.get_text("save_translated_title")
                     )
 
                     if not save_path:
-                        continue
+                        continue  # Skip if user cancels save dialog
 
-                else:  # Default save to SillyTavern directory
-                    base_path = os.path.dirname(file_path)
-                    translated_folder = os.path.join(base_path, f"({target_lang})")
-
-                    if not os.path.exists(translated_folder):
-                        os.makedirs(translated_folder)
-
-                    save_path = os.path.join(translated_folder, os.path.basename(file_path))
+                elif save_location == "silly":
+                    # Use the OpenAI Settings path directly
+                    settings_path = os.path.join(
+                        self.config.data["silly_tavern_path"],
+                        "data", "default-user", "OpenAI Settings"
+                    )
+                    
+                    # Create directory if it doesn't exist
+                    os.makedirs(settings_path, exist_ok=True)
+                    
+                    # Create save path with _translated suffix
+                    original_filename = os.path.basename(file_path)
+                    filename_no_ext = os.path.splitext(original_filename)[0]
+                    save_path = os.path.join(settings_path, f"{filename_no_ext}_translated.json")
 
                 # Save the translated file
                 with open(save_path, 'w', encoding='utf-8') as f:
@@ -1167,9 +1201,10 @@ class TranslatorApp:
             self.config.get_text("translation_done_message")
         )
 
+
 if __name__ == "__main__":
     root = tk.Tk()
     root.title("SillyTavern JSON Translator")
     root.geometry("600x400")
-    app = TranslatorApp(root)   
+    app = TranslatorApp(root)
     root.mainloop()
