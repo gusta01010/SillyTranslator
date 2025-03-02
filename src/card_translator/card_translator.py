@@ -402,13 +402,38 @@ class CharacterProcessor:
         
         return text
     
+    def protect_newlines(self, text):
+        """Protege quebras de linha antes da tradução"""
+        # Substituir sequências de quebras de linha por tokens únicos
+        protected_text = text
+        newlines_map = {}
+        
+        # Encontrar sequências de quebras de linha
+        for i, match in enumerate(re.finditer(r'\n+', text)):
+            newline_seq = match.group(0)
+            token = f"\n"
+            newlines_map[token] = newline_seq
+            protected_text = protected_text.replace(newline_seq, token, 1)
+        
+        return protected_text, newlines_map
+
+    def restore_newlines(self, text, newlines_map):
+        """Restaura quebras de linha após a tradução"""
+        restored_text = text
+        for token, newline_seq in newlines_map.items():
+            restored_text = restored_text.replace(token, newline_seq)
+        return restored_text
+
     def translate_inner_segment(self, text, char_name=None):
         """Translate the inner content of a segment without delimiters"""
         if not text or not text.strip():
             return text
         
+        # Proteger quebras de linha
+        protected_text, newlines_map = self.protect_newlines(text)
+        
         # Protect markdown links and other patterns
-        protected_text, protected_segments = self.protect_markdown_links(text)
+        protected_text, protected_segments = self.protect_markdown_links(protected_text)
         
         # Process placeholders
         processed_text, placeholders = self.process_placeholders(protected_text, char_name)
@@ -416,7 +441,6 @@ class CharacterProcessor:
         # Perform translation
         try:
             translated = self.translator.translate(processed_text, dest=self.target_lang).text
-            print (translated)
             if translated is None:
                 return text
         except Exception as e:
@@ -428,6 +452,9 @@ class CharacterProcessor:
         
         # Restore protected segments
         final_text = self.restore_protected_segments(restored_text, protected_segments)
+        
+        # Restaurar quebras de linha
+        final_text = self.restore_newlines(final_text, newlines_map)
         
         # Fix any malformed bracket placeholders
         final_text = self.fix_malformed_brackets(final_text)
@@ -454,13 +481,28 @@ class CharacterProcessor:
         return text
 
     def translate_text(self, text, char_name=None):
-        """Função principal de tradução que processa e traduz texto corretamente"""
+        """Função principal de tradução com suporte a quebras de linha e formatação"""
         if not text or not isinstance(text, str):
             return text
         
-        print(f"Traduzindo: {text[:30]}..." if len(text) > 30 else f"Traduzindo: {text}")
+        # 1. Proteger quebras de linha primeiro
+        newline_tokens = {}
+        newline_counter = 0
         
-        # Primeiro, capturar e proteger os links e imagens Markdown
+        def replace_newlines(match):
+            nonlocal newline_counter
+            token = f"__NEWLINE_{newline_counter}__"
+            newline_counter += 1
+            newline_tokens[token] = match.group(0)
+            return token
+        
+        # Substituir todas as quebras de linha por tokens
+        protected_text = re.sub(r'\n+', replace_newlines, text)
+        
+        # 2. Continuar com o processamento normal das formatações
+        print(f"Traduzindo: {protected_text[:30]}..." if len(protected_text) > 30 else f"Traduzindo: {protected_text}")
+        
+        # Capturar e proteger os links e imagens Markdown
         markdown_pattern = r'!\[.*?\]\(.*?\)|(?<!!)\[.*?\]\(.*?\)'
         protected_map = {}
         protected_counter = 0
@@ -473,17 +515,17 @@ class CharacterProcessor:
             return placeholder
         
         # Substituir todos os padrões markdown por placeholders
-        protected_text = re.sub(markdown_pattern, protect_markdown, text)
+        protected_text = re.sub(markdown_pattern, protect_markdown, protected_text)
         
         # Agora dividir o texto em segmentos para tradução
         segments = []
-        pattern = r'(__Protected_\d+__|\*\*[^*]+\*\*|\*[^*]+\*|__[^_]+__|_[^_]+_|"[^"]+"|[^*"_]+)'
+        pattern = r'(__Protected_\d+__|__NEWLINE_\d+__|\*\*[^*]+\*\*|\*[^*]+\*|__[^_]+__|_[^_]+_|"[^"]+"|[^*"_]+)'
         
         for match in re.finditer(pattern, protected_text):
             segment = match.group(0)
             
-            # Se for um segmento protegido, adiciona sem traduzir
-            if segment.startswith('__Protected_') and segment.endswith('__'):
+            # Se for um segmento protegido ou quebra de linha, adiciona sem traduzir
+            if segment.startswith('__Protected_') or segment.startswith('__NEWLINE_'):
                 segments.append(segment)
             elif segment.startswith('**') and segment.endswith('**'):
                 inner_content = segment[2:-2]
@@ -515,6 +557,10 @@ class CharacterProcessor:
         # Restaure os marcadores protegidos (links e imagens)
         for placeholder, original_content in protected_map.items():
             result = result.replace(placeholder, original_content)
+        
+        # Restaure as quebras de linha
+        for token, newline in newline_tokens.items():
+            result = result.replace(token, newline)
         
         # Aplique correções finais
         result = self.fix_malformed_brackets(result)
