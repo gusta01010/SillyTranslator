@@ -52,7 +52,10 @@
         "no_files_selected_title": "No files selected",
         "no_files_selected_message": "Please select at least one JSON file to translate.",
         "language_updated_title": "Language Updated",
-        "language_updated_message": "Interface language has been updated."
+        "language_updated_message": "Interface language has been updated.",
+        "select_files_button": "Select JSON files",
+        "sillytavern_path_not_set_title": "SillyTavern Path Not Set",
+        "sillytavern_path_not_set_message": "Please set the SillyTavern directory path."
     },
     "pt": {
         "json_filetype": "Arquivos JSON",
@@ -95,7 +98,10 @@
         "no_files_selected_title": "Nenhum arquivo selecionado",
         "no_files_selected_message": "Por favor, selecione ao menos um arquivo JSON para traduzir.",
         "language_updated_title": "Idioma Atualizado",
-        "language_updated_message": "O idioma da interface foi atualizado."
+        "language_updated_message": "O idioma da interface foi atualizado.",
+        "select_files_button": "Selecionar arquivos JSON",
+        "sillytavern_path_not_set_title": "Caminho do SillyTavern Não Definido",
+        "sillytavern_path_not_set_message": "Por favor, defina o diretório do SillyTavern."
     },
     "ru": {
         "json_filetype": "JSON-файлы",
@@ -138,7 +144,10 @@
         "no_files_selected_title": "Файлы не выбраны",
         "no_files_selected_message": "Пожалуйста, выберите хотя бы один JSON-файл для перевода.",
         "language_updated_title": "Язык обновлен",
-        "language_updated_message": "Язык интерфейса был обновлен."
+        "language_updated_message": "Язык интерфейса был обновлен.",
+        "select_files_button": "Выберите JSON файлы",
+        "sillytavern_path_not_set_title": "Путь SillyTavern Не Задан",
+        "sillytavern_path_not_set_message": "Пожалуйста, укажите путь к директории SillyTavern."
     },
     "ja": {
         "json_filetype": "JSONファイル",
@@ -181,7 +190,10 @@
         "no_files_selected_title": "ファイルが選択されていません",
         "no_files_selected_message": "翻訳するJSONファイルを少なくとも1つ選択してください。",
         "language_updated_title": "言語が更新されました",
-        "language_updated_message": "インターフェースの言語が更新されました。"
+        "language_updated_message": "インターフェースの言語が更新されました。",
+        "select_files_button": "JSONファイルを選択",
+        "sillytavern_path_not_set_title": "SillyTavernパスが未設定",
+        "sillytavern_path_not_set_message": "SillyTavernのディレクトリを設定してください。"
     },
     "zh-cn": {
         "json_filetype": "JSON文件",
@@ -224,7 +236,10 @@
         "no_files_selected_title": "未选择任何文件",
         "no_files_selected_message": "请至少选择一个要翻译的JSON文件。",
         "language_updated_title": "语言已更新",
-        "language_updated_message": "界面语言已更新。"
+        "language_updated_message": "界面语言已更新。",
+        "select_files_button": "选择JSON文件",
+        "sillytavern_path_not_set_title": "未设置SillyTavern路径",
+        "sillytavern_path_not_set_message": "请设置SillyTavern目录路径。"
     },
     "ko": {
         "json_filetype": "JSON 파일",
@@ -267,7 +282,10 @@
         "no_files_selected_title": "선택된 파일 없음",
         "no_files_selected_message": "번역할 JSON 파일을 하나 이상 선택하세요.",
         "language_updated_title": "언어 업데이트됨",
-        "language_updated_message": "인터페이스 언어가 업데이트되었습니다."
+        "language_updated_message": "인터페이스 언어가 업데이트되었습니다.",
+        "select_files_button": "JSON 파일 선택",
+        "sillytavern_path_not_set_title": "SillyTavern 경로 미설정",
+        "sillytavern_path_not_set_message": "SillyTavern 디렉토리 경로를 설정해주세요."
     },
     "it": {
         "json_filetype": "File JSON",
@@ -310,7 +328,10 @@
         "no_files_selected_title": "Nessun file selezionato",
         "no_files_selected_message": "Seleziona almeno un file JSON da tradurre.",
         "language_updated_title": "Lingua aggiornata",
-        "language_updated_message": "La lingua dell'interfaccia è stata aggiornata."
+        "language_updated_message": "La lingua dell'interfaccia è stata aggiornata.",
+        "select_files_button": "Seleziona file JSON",
+        "sillytavern_path_not_set_title": "Percorso SillyTavern Non Impostato",
+        "sillytavern_path_not_set_message": "Impostare il percorso della directory SillyTavern."
     },
     "fr": {
         "json_filetype": "Fichiers JSON",
@@ -353,7 +374,10 @@
         "no_files_selected_title": "Aucun fichier sélectionné",
         "no_files_selected_message": "Veuillez sélectionner au moins un fichier JSON à traduire.",
         "language_updated_title": "Langue mise à jour",
-        "language_updated_message": "La langue de l’interface a été mise à jour."
+        "language_updated_message": "La langue de l’interface a été mise à jour.",
+        "select_files_button": "Sélectionner les fichiers JSON",
+        "sillytavern_path_not_set_title": "Chemin SillyTavern Non Défini",
+        "sillytavern_path_not_set_message": "Veuillez définir le chemin du répertoire SillyTavern."
     },
     "de": {
         "json_filetype": "JSON-Dateien",
@@ -396,7 +420,10 @@
         "no_files_selected_title": "Keine Dateien ausgewählt",
         "no_files_selected_message": "Bitte wählen Sie mindestens eine JSON-Datei zum Übersetzen aus.",
         "language_updated_title": "Sprache aktualisiert",
-        "language_updated_message": "Oberflächensprache wurde aktualisiert."
+        "language_updated_message": "Oberflächensprache wurde aktualisiert.",
+        "select_files_button": "JSON-Dateien auswählen",
+        "sillytavern_path_not_set_title": "SillyTavern-Pfad Nicht Festgelegt",
+        "sillytavern_path_not_set_message": "Bitte legen Sie den SillyTavern-Verzeichnispfad fest."
     },
     "es": {
         "json_filetype": "Archivos JSON",
@@ -439,6 +466,9 @@
         "no_files_selected_title": "No se han seleccionado archivos",
         "no_files_selected_message": "Por favor, seleccione al menos un archivo JSON para traducir.",
         "language_updated_title": "Idioma actualizado",
-        "language_updated_message": "El idioma de la interfaz ha sido actualizado."
+        "language_updated_message": "El idioma de la interfaz ha sido actualizado.",
+        "select_files_button": "Seleccionar archivos JSON",
+        "sillytavern_path_not_set_title": "Ruta de SillyTavern No Establecida",
+        "sillytavern_path_not_set_message": "Por favor, establezca la ruta del directorio SillyTavern."
     }
 }
