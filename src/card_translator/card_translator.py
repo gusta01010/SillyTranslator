@@ -500,7 +500,29 @@ class CharacterProcessor:
         if not hasattr(self, '_translation_cache'):
             self._translation_cache = {}
         
-        # PASSO 0: Registrar mapeamento de placeholder para substituição e vice-versa
+        # PASSO 0: Verificar e rastrear pares de colchetes, parênteses, etc.
+        brackets_map = {
+            '[': ']',
+            '(': ')',
+            '{': '}',
+            '<': '>'
+        }
+        
+        # Registre posições de abertura e fechamento
+        opening_positions = {char: [] for char in brackets_map.keys()}
+        closing_expected = []
+        
+        for i, char in enumerate(text):
+            if char in brackets_map:
+                opening_positions[char].append(i)
+                closing_expected.append(brackets_map[char])
+            elif char in brackets_map.values() and closing_expected and char == closing_expected[-1]:
+                closing_expected.pop()
+        
+        # Se faltar fechamento, armazene essa informação para corrigir no final
+        missing_closings = list(closing_expected)
+        
+        # PASSO 1: Registrar mapeamento de placeholder para substituição e vice-versa
         placeholder_substitutions = {
             "{{user}}": "James",
             "{{char}}": "Jane" if self.use_jane else (char_name if char_name else "{{char}}"),
@@ -520,12 +542,7 @@ class CharacterProcessor:
                 is_lowercase = match.group(2).islower()
                 capitalization_map[idx] = is_lowercase
         
-        # PASSO 1: Armazenar os placeholders originais antes de qualquer substituição
-        original_placeholders = []
-        for match in re.finditer(r'\{\{[^{}]+\}\}', text):
-            original_placeholders.append((match.group(0), match.start(), match.end()))
-        
-        # PASSO 2: Proteger placeholders genéricos e especiais simultaneamente
+        # PASSO 2: Proteger TODOS os placeholders (inclusive os não conhecidos)
         placeholder_pattern = r'(\s*\{\{[^{}]+\}\}\s*)'
         placeholder_map = {}
         placeholder_count = 0
@@ -545,7 +562,7 @@ class CharacterProcessor:
                         spaces_after = original[original.find(placeholder_text) + len(placeholder_text):]
                         return f"{spaces_before}{subst}{spaces_after}"
             
-            # Para placeholders genéricos, usar token
+            # Para TODOS os outros placeholders, usar token para não traduzir
             token = f"__PLACEHOLDER_{placeholder_count}__"
             placeholder_count += 1
             placeholder_map[token] = original
@@ -553,6 +570,24 @@ class CharacterProcessor:
         
         # Substituir todos os {{...}} por tokens ou substituições
         protected_text = re.sub(placeholder_pattern, protect_all_placeholders, text)
+        
+        # NOVO: Proteger estruturas específicas problemáticas
+        # Proteger conteúdo entre colchetes e parênteses
+        brackets_pattern = r'(\[.+?\]|\(.+?\))'
+        brackets_map = {}
+        brackets_counter = 0
+        
+        def protect_brackets(match):
+            nonlocal brackets_counter
+            token = f"__BRACKETS_{brackets_counter}__"
+            brackets_counter += 1
+            brackets_map[token] = {
+                'content': match.group(0),
+                'needs_translation': True  # Marcar que o conteúdo precisa ser traduzido separadamente
+            }
+            return token
+        
+        protected_text = re.sub(brackets_pattern, protect_brackets, protected_text)
         
         # 2. Proteger quebras de linha
         newline_tokens = {}
@@ -582,69 +617,73 @@ class CharacterProcessor:
             markdown_map[token] = match.group(0)
             return token
         
-        newline_token_pattern = r'(__\s*[Nn]ewline_\d+\s*__)'
-        newline_tokens = {}
-        
-        def extract_newline_tokens(match):
-            token = f"__PROTECTED_NEWLINE_{len(newline_tokens)}__"
-            newline_tokens[token] = match.group(0)
-            return token
-        
-        # Substituir todos os tokens de newline por tokens protegidos
-        protected_text = re.sub(newline_token_pattern, extract_newline_tokens, text)
+        protected_text = re.sub(markdown_pattern, protect_markdown, protected_text)
         
         # 4. Dividir em segmentos para tradução, preservando formatação
         segments = []
-        pattern = r'(__PLACEHOLDER_\d+__|__MARKDOWN_\d+__|__NEWLINE_\d+__|\*\*[^*]+\*\*|\*[^*]+\*|__[^_]+__|_[^_]+_|"[^"]+"|[^*"_]+)'
-        
+        pattern = (
+            r'(?P<token>__PLACEHOLDER_\d+__|__MARKDOWN_\d+__|__NEWLINE_\d+__|__BRACKETS_\d+__)'
+            r'|(?P<braces>\{\{[^{}]+\}\})'
+            r'|(?P<delim>[\*_"]+)(?P<inner>.+?)(?P=delim)'
+            r'|(?P<rest>[^*\_"{\}]+)'
+        )
         for match in re.finditer(pattern, protected_text):
-            segment = match.group(0)
-            
-            # Segmentos protegidos não serão traduzidos
-            if (segment.startswith('__PLACEHOLDER_') or 
-                segment.startswith('__MARKDOWN_') or 
-                segment.startswith('__NEWLINE_')):
-                segments.append(segment)
-            # Formatos como **bold**, *italic*, etc.
-            elif segment.startswith('**') and segment.endswith('**'):
-                inner_content = segment[2:-2]
-                translated_content = self.translate_segment(inner_content)
-                segments.append(f"**{translated_content}**") if translated_content else segments.append(segment)
-            elif segment.startswith('*') and segment.endswith('*'):
-                inner_content = segment[1:-1]
-                translated_content = self.translate_segment(inner_content)
-                segments.append(f"*{translated_content}*") if translated_content else segments.append(segment)
-            elif segment.startswith('__') and segment.endswith('__'):
-                inner_content = segment[2:-2]
-                translated_content = self.translate_segment(inner_content)
-                segments.append(f"__{translated_content}__") if translated_content else segments.append(segment)
-            elif segment.startswith('_') and segment.endswith('_'):
-                inner_content = segment[1:-1]
-                translated_content = self.translate_segment(inner_content)
-                segments.append(f"_{translated_content}_") if translated_content else segments.append(segment)
-            elif segment.startswith('"') and segment.endswith('"'):
-                inner_content = segment[1:-1]
-                translated_content = self.translate_segment(inner_content)
-                segments.append(f'"{translated_content}"') if translated_content else segments.append(segment)
+            if match.group('token'):
+                token = match.group('token')
+                if token.startswith("__BRACKETS_") and brackets_map[token]['needs_translation']:
+                    # Traduzir o conteúdo dos colchetes/parênteses, mantendo os símbolos
+                    content = brackets_map[token]['content']
+                    open_sym = content[0]
+                    close_sym = content[-1]
+                    inner_content = content[1:-1]
+                    
+                    # Traduzir o conteúdo interno
+                    translated_inner = self.translate_segment(inner_content)
+                    if translated_inner:
+                        brackets_map[token]['translated'] = f"{open_sym}{translated_inner}{close_sym}"
+                    
+                segments.append(token)
+            elif match.group('braces'):
+                # Nunca traduzir conteúdo dentro de braces
+                segments.append(match.group('braces'))
+            elif match.group('delim'):
+                delim = match.group('delim')
+                inner = match.group('inner')
+                translated_inner = self.translate_segment(inner)
+                # Remover espaços extras antes e depois do conteúdo traduzido
+                translated_inner = (translated_inner.strip() if translated_inner else inner.strip())
+                segments.append(f"{delim}{translated_inner}{delim}")
+            elif match.group('rest'):
+                seg = match.group('rest')
+                translated_segment = self.translate_segment(seg)
+                segments.append(translated_segment if translated_segment else seg)
             else:
-                translated_segment = self.translate_segment(segment)
-                segments.append(translated_segment if translated_segment else segment)
-        
+                seg = match.group(0)
+                translated_segment = self.translate_segment(seg)
+                segments.append(translated_segment if translated_segment else seg)
+                
         # 5. Reunir todos os segmentos com verificação de None
         safe_segments = [s if s is not None else "" for s in segments]
         result = ''.join(safe_segments)
         
-        # 6. Restaurar na ordem inversa: primeiro markdown, depois newlines, finalmente placeholders
+        # 6. Restaurar na ordem inversa
+        
+        # Restaurar conteúdo de colchetes/parênteses
+        for token, info in brackets_map.items():
+            if 'translated' in info:
+                result = result.replace(token, info['translated'])
+            else:
+                result = result.replace(token, info['content'])
+        
+        # Restaurar markdown
         for token, original in markdown_map.items():
             result = result.replace(token, original)
         
+        # Restaurar quebras de linha
         for token, original in newline_tokens.items():
             result = result.replace(token, original)
         
         # PASSO IMPORTANTE: Restaurar "James" para {{user}} e "Jane" para {{char}}
-        # Fazemos isso antes de restaurar os outros placeholders
-        
-        # Criar padrões para cada substituição para preservar capitalização
         for subst, placeholder in reverse_substitutions.items():
             # Criar variantes para capitalização
             patterns = [
@@ -656,12 +695,11 @@ class CharacterProcessor:
             
             # Aplicar substituições preservando espaços ao redor
             for pattern in patterns:
-                # Substituir com preservação de espaços antes e depois
                 result = re.sub(r'(\s*)' + re.escape(pattern) + r'(\s*)', 
                             lambda m: m.group(1) + placeholder + m.group(2), 
                             result)
         
-        # Restaurar placeholders genericos
+        # Restaurar placeholders genéricos
         for token, original in placeholder_map.items():
             result = result.replace(token, original)
         
@@ -683,8 +721,15 @@ class CharacterProcessor:
                     char_pos = match.start(2)
                     result = result[:char_pos] + match.group(2).upper() + result[char_pos+1:]
         
+        # NOVO: Verificar e adicionar colchetes/parênteses faltantes
+        for closing_bracket in missing_closings:
+            result += closing_bracket
+        
         # Corrigir problemas com espaços e quebras de linha
         result = re.sub(r'\s+\n', '\n', result)  # Remove espaços antes de quebras de linha
+        
+        # NOVO: Corrigir espaços entre palavras e parênteses/colchetes
+        result = re.sub(r'(\w+)(\()', r'\1 \2', result)  # Adicionar espaço entre palavra e parêntese
         
         # 7. Aplicar correções finais
         result = self.fix_special_characters(result)
@@ -693,7 +738,6 @@ class CharacterProcessor:
         self._translation_cache[cache_key] = result
         
         return result
-
     def translate_segment(self, text):
         """Traduz um segmento de texto simples com tratamento de None"""
         if not text or not text.strip():
@@ -701,6 +745,7 @@ class CharacterProcessor:
         
         try:
             translated = self.translator.translate(text, dest=self.target_lang).text
+            print (translated)
             return translated if translated is not None else text
         except Exception as e:
             print(f"Erro na tradução: {e}")
