@@ -582,7 +582,16 @@ class CharacterProcessor:
             markdown_map[token] = match.group(0)
             return token
         
-        protected_text = re.sub(markdown_pattern, protect_markdown, protected_text)
+        newline_token_pattern = r'(__\s*[Nn]ewline_\d+\s*__)'
+        newline_tokens = {}
+        
+        def extract_newline_tokens(match):
+            token = f"__PROTECTED_NEWLINE_{len(newline_tokens)}__"
+            newline_tokens[token] = match.group(0)
+            return token
+        
+        # Substituir todos os tokens de newline por tokens protegidos
+        protected_text = re.sub(newline_token_pattern, extract_newline_tokens, text)
         
         # 4. Dividir em segmentos para tradução, preservando formatação
         segments = []
