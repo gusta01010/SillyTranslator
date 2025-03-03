@@ -500,6 +500,17 @@ class CharacterProcessor:
         if not hasattr(self, '_translation_cache'):
             self._translation_cache = {}
         
+        # PASSO 0: Registrar mapeamento de placeholder para substituição e vice-versa
+        placeholder_substitutions = {
+            "{{user}}": "James",
+            "{{char}}": "Jane" if self.use_jane else (char_name if char_name else "{{char}}"),
+            "{{user}}'s": "James's",
+            "{{char}}'s": f"{'Jane' if self.use_jane else (char_name if char_name else '{{char}}')}'s"
+        }
+        
+        # Criar mapeamento reverso para restauração pós-tradução
+        reverse_substitutions = {v: k for k, v in placeholder_substitutions.items()}
+        
         # Obter informações de capitalização após placeholders no texto original
         capitalization_map = {}
         original_placeholders = list(re.finditer(r'\{\{[^{}]+\}\}(\s*)(\w)?', text))
@@ -509,7 +520,12 @@ class CharacterProcessor:
                 is_lowercase = match.group(2).islower()
                 capitalization_map[idx] = is_lowercase
         
-        # Modificar o padrão para capturar ESPAÇOS ao redor dos placeholders
+        # PASSO 1: Armazenar os placeholders originais antes de qualquer substituição
+        original_placeholders = []
+        for match in re.finditer(r'\{\{[^{}]+\}\}', text):
+            original_placeholders.append((match.group(0), match.start(), match.end()))
+        
+        # PASSO 2: Proteger placeholders genéricos e especiais simultaneamente
         placeholder_pattern = r'(\s*\{\{[^{}]+\}\}\s*)'
         placeholder_map = {}
         placeholder_count = 0
@@ -517,12 +533,25 @@ class CharacterProcessor:
         def protect_all_placeholders(match):
             nonlocal placeholder_count
             original = match.group(0)
+            placeholder_text = re.search(r'\{\{([^{}]+)\}\}', original).group(0)
+            
+            # Verificar se é um placeholder especial (user/char) ou genérico
+            if placeholder_text.lower() in [p.lower() for p in placeholder_substitutions.keys()]:
+                # Para placeholders especiais, substituir pelo valor correspondente
+                for ph, subst in placeholder_substitutions.items():
+                    if placeholder_text.lower() == ph.lower():
+                        # Preservar espaços antes e depois
+                        spaces_before = original[:original.find(placeholder_text)]
+                        spaces_after = original[original.find(placeholder_text) + len(placeholder_text):]
+                        return f"{spaces_before}{subst}{spaces_after}"
+            
+            # Para placeholders genéricos, usar token
             token = f"__PLACEHOLDER_{placeholder_count}__"
             placeholder_count += 1
             placeholder_map[token] = original
             return token
         
-        # Substituir todos os {{...}} por tokens
+        # Substituir todos os {{...}} por tokens ou substituições
         protected_text = re.sub(placeholder_pattern, protect_all_placeholders, text)
         
         # 2. Proteger quebras de linha
@@ -603,6 +632,27 @@ class CharacterProcessor:
         for token, original in newline_tokens.items():
             result = result.replace(token, original)
         
+        # PASSO IMPORTANTE: Restaurar "James" para {{user}} e "Jane" para {{char}}
+        # Fazemos isso antes de restaurar os outros placeholders
+        
+        # Criar padrões para cada substituição para preservar capitalização
+        for subst, placeholder in reverse_substitutions.items():
+            # Criar variantes para capitalização
+            patterns = [
+                subst,                      # Exato como está
+                subst.lower(),              # tudo minúsculo
+                subst.upper(),              # TUDO MAIÚSCULO
+                subst.capitalize(),         # Primeira letra maiúscula
+            ]
+            
+            # Aplicar substituições preservando espaços ao redor
+            for pattern in patterns:
+                # Substituir com preservação de espaços antes e depois
+                result = re.sub(r'(\s*)' + re.escape(pattern) + r'(\s*)', 
+                            lambda m: m.group(1) + placeholder + m.group(2), 
+                            result)
+        
+        # Restaurar placeholders genericos
         for token, original in placeholder_map.items():
             result = result.replace(token, original)
         
@@ -623,6 +673,9 @@ class CharacterProcessor:
                 elif not capitalization_map[idx] and match.group(2).islower():
                     char_pos = match.start(2)
                     result = result[:char_pos] + match.group(2).upper() + result[char_pos+1:]
+        
+        # Corrigir problemas com espaços e quebras de linha
+        result = re.sub(r'\s+\n', '\n', result)  # Remove espaços antes de quebras de linha
         
         # 7. Aplicar correções finais
         result = self.fix_special_characters(result)
