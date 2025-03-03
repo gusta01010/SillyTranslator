@@ -500,9 +500,17 @@ class CharacterProcessor:
         if not hasattr(self, '_translation_cache'):
             self._translation_cache = {}
         
-        # ---- VOLTAR PARA A IMPLEMENTAÇÃO ORIGINAL QUE FUNCIONAVA ----
-        # 1. PRIMEIRO: Proteger TODOS os placeholders {{qualquer_coisa}}
-        placeholder_pattern = r'\{\{[^{}]+\}\}'
+        # Obter informações de capitalização após placeholders no texto original
+        capitalization_map = {}
+        original_placeholders = list(re.finditer(r'\{\{[^{}]+\}\}(\s*)(\w)?', text))
+        
+        for idx, match in enumerate(original_placeholders):
+            if match.group(2):  # Se há um caractere após o espaço
+                is_lowercase = match.group(2).islower()
+                capitalization_map[idx] = is_lowercase
+        
+        # Modificar o padrão para capturar ESPAÇOS ao redor dos placeholders
+        placeholder_pattern = r'(\s*\{\{[^{}]+\}\}\s*)'
         placeholder_map = {}
         placeholder_count = 0
         
@@ -597,6 +605,24 @@ class CharacterProcessor:
         
         for token, original in placeholder_map.items():
             result = result.replace(token, original)
+        
+        # Corrigir espaçamento e verificar capitalização após os placeholders
+        result = re.sub(r'(\}\})([^\s\.,;:\)\]}])', r'\1 \2', result)
+        result = re.sub(r'([^\s\(\[\{])(\{\{)', r'\1 \2', result)
+        
+        # Corrigir capitalização após placeholders
+        placeholder_positions = list(re.finditer(r'\{\{[^{}]+\}\}(\s*)(\w)?', result))
+        
+        for idx, match in enumerate(placeholder_positions):
+            if idx in capitalization_map and match.group(2):
+                # Se no texto original era minúsculo e agora está maiúsculo
+                if capitalization_map[idx] and match.group(2).isupper():
+                    char_pos = match.start(2)
+                    result = result[:char_pos] + match.group(2).lower() + result[char_pos+1:]
+                # Se no texto original era maiúsculo e agora está minúsculo
+                elif not capitalization_map[idx] and match.group(2).islower():
+                    char_pos = match.start(2)
+                    result = result[:char_pos] + match.group(2).upper() + result[char_pos+1:]
         
         # 7. Aplicar correções finais
         result = self.fix_special_characters(result)
