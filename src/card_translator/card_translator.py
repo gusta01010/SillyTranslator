@@ -500,6 +500,72 @@ class CharacterProcessor:
         if not hasattr(self, '_translation_cache'):
             self._translation_cache = {}
         
+        # Capturar a estrutura de espaçamento original em torno de placeholders e delimitadores
+        placeholder_spacing = {}
+        delimiters_spacing = {}
+        
+        # Capturar espaçamento original ao redor de {{char}}, {{user}} e outros placeholders
+        for match in re.finditer(r'(?P<before>.)?\{\{(?P<placeholder>[^{}]+)\}\}(?P<after>.)?', text):
+            placeholder = f"{{{{" + match.group('placeholder') + "}}}}"
+            before_char = match.group('before') if match.group('before') else ""
+            after_char = match.group('after') if match.group('after') else ""
+            
+            # Determinar se deve ter espaço antes/depois com base no caractere adjacente
+            space_before = True
+            space_after = True
+            
+            # Caracteres especiais que não exigem espaço
+            special_chars_before = ['[', '(', '{', '<', ' ', '\n', '\t', None]
+            special_chars_after = [']', ')', '}', '>', ' ', '\n', '\t', ',', '.', ':', ';', '!', '?', None]
+            
+            if before_char in special_chars_before:
+                space_before = False
+            if after_char in special_chars_after:
+                space_after = False
+                
+            placeholder_spacing[placeholder] = {
+                'before': space_before,
+                'after': space_after,
+                'original_before': before_char,
+                'original_after': after_char
+            }
+        
+        # Capturar espaçamento original ao redor de delimitadores como "", [], (), etc.
+        delimiter_pairs = [
+            ('"', '"'), ('*', '*'), ('_', '_'), ('[', ']'), ('(', ')'), ('{', '}'), ('<', '>')
+        ]
+        
+        for start_delim, end_delim in delimiter_pairs:
+            # Padrão para encontrar um delimitador de início seguido eventualmente por seu fim
+            pattern = re.escape(start_delim) + r'(.*?)' + re.escape(end_delim)
+            for match in re.finditer(pattern, text, re.DOTALL):
+                full_match = match.group(0)
+                # Verificar o caractere antes e depois do delimitador
+                start_pos = match.start()
+                end_pos = match.end() - 1
+                
+                before_char = text[start_pos-1] if start_pos > 0 else None
+                after_char = text[end_pos+1] if end_pos < len(text)-1 else None
+                
+                # Mesma lógica para determinar espaçamento
+                space_before = True
+                space_after = True
+                
+                special_chars_before = ['[', '(', '{', '<', ' ', '\n', '\t', None]
+                special_chars_after = [']', ')', '}', '>', ' ', '\n', '\t', ',', '.', ':', ';', '!', '?', None]
+                
+                if before_char in special_chars_before:
+                    space_before = False
+                if after_char in special_chars_after:
+                    space_after = False
+                    
+                delimiters_spacing[full_match] = {
+                    'before': space_before,
+                    'after': space_after,
+                    'original_before': before_char,
+                    'original_after': after_char
+                }
+        
         # PASSO 0: Verificar e rastrear pares de colchetes, parênteses, etc.
         brackets_map = {
             '[': ']',
@@ -627,6 +693,31 @@ class CharacterProcessor:
             r'|(?P<delim>[\*_"]+)(?P<inner>.+?)(?P=delim)'
             r'|(?P<rest>[^*\_"{\}]+)'
         )
+        
+        # Nova função para verificar e preservar maiúsculas/minúsculas
+        def preserve_case(original, translated):
+            if not translated or not original:
+                return translated
+                
+            # Se o original for todo maiúsculo, converta a tradução para maiúsculo
+            if original.isupper():
+                return translated.upper()
+            # Se o original for todo minúsculo, converta a tradução para minúsculo
+            elif original.islower():
+                return translated.lower()
+            # Caso contrário, mantenha como está
+            return translated
+        
+        # Nova função para corrigir o espaçamento em delimitadores como ":*"
+        def fix_delimiter_spacing(delim, inner):
+            # Verificar os últimos 3 caracteres para casos como ":*"
+            if len(delim) >= 2:
+                last_char = delim[-1]
+                if delim[-2:] == ":*" or delim[-2:] == ";*" or delim[-2:] == ".*":
+                    # Manter juntos sem espaço adicional
+                    return f"{delim}{inner}{delim}"
+            return f"{delim}{inner}{delim}"
+        
         for match in re.finditer(pattern, protected_text):
             if match.group('token'):
                 token = match.group('token')
@@ -639,6 +730,9 @@ class CharacterProcessor:
                     
                     # Traduzir o conteúdo interno
                     translated_inner = self.translate_segment(inner_content)
+                    # Preservar caso (maiúsculo/minúsculo)
+                    translated_inner = preserve_case(inner_content, translated_inner)
+                    
                     if translated_inner:
                         brackets_map[token]['translated'] = f"{open_sym}{translated_inner}{close_sym}"
                     
@@ -650,16 +744,23 @@ class CharacterProcessor:
                 delim = match.group('delim')
                 inner = match.group('inner')
                 translated_inner = self.translate_segment(inner)
+                # Preservar caso (maiúsculo/minúsculo)
+                translated_inner = preserve_case(inner, translated_inner)
                 # Remover espaços extras antes e depois do conteúdo traduzido
                 translated_inner = (translated_inner.strip() if translated_inner else inner.strip())
-                segments.append(f"{delim}{translated_inner}{delim}")
+                # Corrigir espaçamento em delimitadores específicos
+                segments.append(fix_delimiter_spacing(delim, translated_inner))
             elif match.group('rest'):
                 seg = match.group('rest')
                 translated_segment = self.translate_segment(seg)
+                # Preservar caso (maiúsculo/minúsculo)
+                translated_segment = preserve_case(seg, translated_segment)
                 segments.append(translated_segment if translated_segment else seg)
             else:
                 seg = match.group(0)
                 translated_segment = self.translate_segment(seg)
+                # Preservar caso (maiúsculo/minúsculo)
+                translated_segment = preserve_case(seg, translated_segment)
                 segments.append(translated_segment if translated_segment else seg)
                 
         # 5. Reunir todos os segmentos com verificação de None
@@ -687,57 +788,80 @@ class CharacterProcessor:
         for subst, placeholder in reverse_substitutions.items():
             # Criar variantes para capitalização
             patterns = [
-                subst,                      # Exato como está
-                subst.lower(),              # tudo minúsculo
-                subst.upper(),              # TUDO MAIÚSCULO
-                subst.capitalize(),         # Primeira letra maiúscula
+                subst,                  # Exato como está
+                subst.lower(),          # tudo minúsculo
+                subst.upper(),          # TUDO MAIÚSCULO
+                subst.capitalize(),     # Primeira letra maiúscula
             ]
             
-            # Aplicar substituições preservando espaços ao redor
+            # Aplicar substituições preservando espaços exatamente como estavam
             for pattern in patterns:
+                # Modificado para não adicionar espaços extras
                 result = re.sub(r'(\s*)' + re.escape(pattern) + r'(\s*)', 
-                            lambda m: m.group(1) + placeholder + m.group(2), 
-                            result)
+                        lambda m: m.group(1) + placeholder + m.group(2), 
+                        result)
         
         # Restaurar placeholders genéricos
         for token, original in placeholder_map.items():
             result = result.replace(token, original)
-        
-        # Corrigir espaçamento e verificar capitalização após os placeholders
-        result = re.sub(r'(\}\})([^\s\.,;:\)\]}])', r'\1 \2', result)
-        result = re.sub(r'([^\s\(\[\{])(\{\{)', r'\1 \2', result)
         
         # Corrigir capitalização após placeholders
         placeholder_positions = list(re.finditer(r'\{\{[^{}]+\}\}(\s*)(\w)?', result))
         
         for idx, match in enumerate(placeholder_positions):
             if idx in capitalization_map and match.group(2):
-                # Se no texto original era minúsculo e agora está maiúsculo
-                if capitalization_map[idx] and match.group(2).isupper():
-                    char_pos = match.start(2)
+                char_pos = match.end(1)  # Posição após o espaço
+                if capitalization_map[idx]:  # Se deveria ser minúsculo
                     result = result[:char_pos] + match.group(2).lower() + result[char_pos+1:]
-                # Se no texto original era maiúsculo e agora está minúsculo
-                elif not capitalization_map[idx] and match.group(2).islower():
-                    char_pos = match.start(2)
+                else:  # Se deveria ser maiúsculo
                     result = result[:char_pos] + match.group(2).upper() + result[char_pos+1:]
         
-        # NOVO: Verificar e adicionar colchetes/parênteses faltantes
-        for closing_bracket in missing_closings:
-            result += closing_bracket
+        # Corrigir espaçamento especial em ":*" e similares
+        result = re.sub(r'(\:|\;|\.) (\*)', r'\1\2', result)
         
-        # Corrigir problemas com espaços e quebras de linha
-        result = re.sub(r'\s+\n', '\n', result)  # Remove espaços antes de quebras de linha
+        # NOVO: Aplicar regras de espaçamento com base no texto original
+        # Para cada placeholder no resultado final
+        for placeholder, spacing_info in placeholder_spacing.items():
+            # Procurar esse placeholder no resultado
+            for match in re.finditer(re.escape(placeholder), result):
+                start_pos = match.start()
+                end_pos = match.end()
+                
+                # Verificar e ajustar espaço antes
+                if start_pos > 0:
+                    # Se no original NÃO deveria ter espaço antes (e.g. [{{char}})
+                    if not spacing_info['before']:
+                        # Se houver um espaço antes, remova-o
+                        if result[start_pos-1] == ' ':
+                            result = result[:start_pos-1] + result[start_pos:]
+                            # Ajustar posição após remoção
+                            end_pos -= 1
+                    # Se no original DEVERIA ter espaço antes (e.g. letra{{char}})
+                    else:
+                        # Se não houver um espaço antes, adicione-o
+                        if result[start_pos-1] != ' ' and not result[start_pos-1] in ['\n', '\t']:
+                            result = result[:start_pos] + ' ' + result[start_pos:]
+                            # Ajustar posição após adição
+                            end_pos += 1
+                
+                # Verificar e ajustar espaço depois
+                if end_pos < len(result):
+                    # Se no original NÃO deveria ter espaço depois
+                    if not spacing_info['after']:
+                        # Se houver um espaço depois, remova-o
+                        if result[end_pos] == ' ':
+                            result = result[:end_pos] + result[end_pos+1:]
+                    # Se no original DEVERIA ter espaço depois
+                    else:
+                        # Se não houver um espaço depois, adicione-o
+                        if result[end_pos] != ' ' and not result[end_pos] in ['\n', '\t', ',', '.', '!', '?', ':', ';']:
+                            result = result[:end_pos] + ' ' + result[end_pos:]
         
-        # NOVO: Corrigir espaços entre palavras e parênteses/colchetes
-        result = re.sub(r'(\w+)(\()', r'\1 \2', result)  # Adicionar espaço entre palavra e parêntese
-        
-        # 7. Aplicar correções finais
-        result = self.fix_special_characters(result)
-        
-        # 8. Adicionar ao cache
+        # Adicionar o resultado ao cache para uso futuro
         self._translation_cache[cache_key] = result
         
         return result
+    
     def translate_segment(self, text):
         """Traduz um segmento de texto simples com tratamento de None"""
         if not text or not text.strip():
