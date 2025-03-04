@@ -431,12 +431,9 @@ class CharacterProcessor:
         return text
 
     def translate_segment(self, text):
-        """Traduz segmentos preservando delimitadores, variáveis e imagens markdown"""
+        """Traduz segmentos preservando delimitadores, variáveis e formatação"""
         if not text or not isinstance(text, str):
             return text
-        
-        # Preservar quebras de linha originais
-        original_newlines = text.count('\n')
         
         # Preservar links de imagens no formato markdown ![img](url)
         image_links = {}
@@ -444,123 +441,200 @@ class CharacterProcessor:
         
         # Encontrar todas as imagens markdown e substituí-las por placeholders não traduzíveis
         for i, match in enumerate(re.finditer(img_pattern, text)):
-            image = match.group(1)
-            # Usar placeholders com números e símbolos que o tradutor tende a não modificar
-            placeholder = f"XZIMG{i}ZX"  # Formato menos provável de ser traduzido
+            image = match.group(0)  # Capturar a imagem completa
+            placeholder = f"XZIMG{i}ZX"
             image_links[placeholder] = image
             text = text.replace(image, placeholder, 1)
         
-        # Pré-processamento: substituir {{user}} e {{char}} por nomes para tradução
-        processed_text = text
-        has_user_var = "{{user}}" in processed_text
-        has_char_var = "{{char}}" in processed_text
+        # Preservar variáveis {{user}} e {{char}}
+        has_user_var = "{{user}}" in text
+        has_char_var = "{{char}}" in text
         
-        # Substituir variáveis por nomes temporários
+        processed_text = text
         if has_user_var:
             processed_text = processed_text.replace("{{user}}", "James")
         if has_char_var:
             processed_text = processed_text.replace("{{char}}", "Jane")
         
-        # Identificar e proteger outras variáveis com formato {{...}}
+        # Preservar outras variáveis {{...}}
+        var_pattern = r'(\{\{[^{}]+\}\})'
         protected_vars = {}
-        var_pattern = r'\{\{[^{}]+\}\}'
         
         # Encontrar todas as variáveis restantes e substituí-las por placeholders
-        var_matches = re.finditer(var_pattern, processed_text)
-        for i, match in enumerate(var_matches):
+        for i, match in enumerate(re.finditer(var_pattern, processed_text)):
             var = match.group(0)
-            # Placeholders com formato que não deve ser traduzido
             placeholder = f"XZVAR{i}ZX"
             protected_vars[placeholder] = var
             processed_text = processed_text.replace(var, placeholder, 1)
         
-        # Padrões para identificar texto entre diferentes delimitadores
-        # Modificado para capturar espaços antes e depois do conteúdo
-        delimiters = [
-            (r'(\*+)(\s*)([^\*]+?)(\s*)(\*+)', 1, 2, 3, 4, 5),    # *texto* ou **texto** ou ***texto***
-            (r'(_+)(\s*)([^_]+?)(\s*)(_+)', 1, 2, 3, 4, 5),       # _texto_ ou __texto__
-            (r'(`)(\s*)([^`]+?)(\s*)(`)', 1, 2, 3, 4, 5),         # `texto`
-            (r'(")(\s*)([^"]+?)(\s*)(")', 1, 2, 3, 4, 5),         # "texto"
-            (r'(\{{{)(\s*)([^}]+?)(\s*)(\}\}\})', 1, 2, 3, 4, 5), # {{{texto}}}
-            (r'(\[)(\s*)([^\]]+?)(\s*)(\])', 1, 2, 3, 4, 5),      # [texto]
-            (r'(\()(\s*)([^)]+?)(\s*)(\))', 1, 2, 3, 4, 5)        # (texto)
+        # Preservar quebras de linha explícitas
+        nl_pattern = r'(\\n)'
+        newline_placeholders = {}
+        
+        for i, match in enumerate(re.finditer(nl_pattern, processed_text)):
+            newline = match.group(0)
+            placeholder = f"XZNL{i}ZX"
+            newline_placeholders[placeholder] = newline
+            processed_text = processed_text.replace(newline, placeholder, 1)
+        
+        # Abordagem simplificada: dividir o texto em partes delimitadas e não delimitadas
+        # Padrões de delimitadores comuns
+        delimiter_patterns = [
+            r'\*[^\*\n]+?\*',          # *texto* (itálico)
+            r'\*\*[^\*\n]+?\*\*',      # **texto** (negrito)
+            r'`[^`\n]+?`',             # `texto` (código inline)
+            r'```[\s\S]+?```',         # ```texto``` (bloco de código)
+            r'"[^"\n]+?"',             # "texto" (aspas)
+            r'_[^_\n]+?_',             # _texto_ (itálico)
+            r'__[^_\n]+?__'            # __texto__ (negrito)
         ]
         
-        # Processar cada tipo de delimitador
-        for pattern, open_group, space_before, content_group, space_after, close_group in delimiters:
-            last_pos = 0
-            result = ""
+        # Combinar todos os padrões
+        combined_pattern = '|'.join(f'({pattern})' for pattern in delimiter_patterns)
+        
+        # Dividir o texto usando os delimitadores como separadores
+        parts = []
+        last_end = 0
+        
+        for match in re.finditer(combined_pattern, processed_text):
+            start, end = match.span()
             
-            # Encontrar todos os trechos com este delimitador
-            for match in re.finditer(pattern, processed_text):
-                # Texto antes do delimitador
-                result += processed_text[last_pos:match.start()]
+            # Texto antes do delimitador (raw text)
+            if start > last_end:
+                raw_text = processed_text[last_end:start]
+                # Preservar espaçamentos do raw text
+                leading_spaces = len(raw_text) - len(raw_text.lstrip())
+                trailing_spaces = len(raw_text) - len(raw_text.rstrip())
+                stripped_text = raw_text.strip()
                 
-                # Extrair componentes
-                opening = match.group(open_group)
-                space_before_content = match.group(space_before)
-                content = match.group(content_group)
-                space_after_content = match.group(space_after)
-                closing = match.group(close_group)
+                parts.append(('text', raw_text, leading_spaces, trailing_spaces, stripped_text))
+            
+            # O próprio delimitador
+            parts.append(('delimiter', match.group(0)))
+            last_end = end
+        
+        # Texto restante após o último delimitador
+        if last_end < len(processed_text):
+            raw_text = processed_text[last_end:]
+            # Preservar espaçamentos do raw text final
+            leading_spaces = len(raw_text) - len(raw_text.lstrip())
+            trailing_spaces = len(raw_text) - len(raw_text.rstrip())
+            stripped_text = raw_text.strip()
+            
+            parts.append(('text', raw_text, leading_spaces, trailing_spaces, stripped_text))
+        
+        # Processar cada parte
+        result = []
+        for part in parts:
+            if part[0] == 'text':
+                _, raw_text, leading_spaces, trailing_spaces, stripped_text = part
                 
-                # Traduzir apenas o conteúdo
-                try:
-                    if content and content.strip():
-                        translated_content = self.translator.translate(content, dest=self.target_lang).text
-                        # Verificar se a tradução não é None
-                        if translated_content is None:
-                            translated_content = content
+                if stripped_text:
+                    # Verificar se o texto contém placeholders de imagem
+                    contains_img_placeholder = any(placeholder in stripped_text for placeholder in image_links)
+                    
+                    if contains_img_placeholder:
+                        # Se contiver placeholder de imagem, não traduzir
+                        result.append(raw_text)
                     else:
-                        translated_content = content
-                except Exception as e:
-                    print(f"Erro ao traduzir dentro de delimitadores: {e}")
-                    translated_content = content
-                
-                # Reconstruir com delimitadores e espaçamentos originais
-                result += opening + space_before_content + translated_content + space_after_content + closing
-                
-                last_pos = match.end()
+                        # Traduzir texto não delimitado, preservando espaçamentos
+                        try:
+                            translated = self.translator.translate(stripped_text, dest=self.target_lang).text
+                            # Reconstruir com espaçamentos originais
+                            result.append(' ' * leading_spaces + translated + ' ' * trailing_spaces)
+                        except Exception as e:
+                            print(f"Erro ao traduzir texto: {e}")
+                            result.append(raw_text)
+                else:
+                    # Preservar espaços em branco como estão
+                    result.append(raw_text)
             
-            # Adicionar o resto do texto
-            if last_pos < len(processed_text):
-                result += processed_text[last_pos:]
-            
-            # Atualizar o texto processado para próximo padrão
-            processed_text = result
+            elif part[0] == 'delimiter':
+                part_text = part[1]
+                # Processar texto delimitado
+                if part_text.startswith('`'):
+                    # Traduzir conteúdo de código também
+                    if part_text.startswith('```') and part_text.endswith('```'):
+                        # Bloco de código
+                        content = part_text[3:-3]
+                        try:
+                            translated_content = self.translator.translate(content, dest=self.target_lang).text
+                            result.append(f"```{translated_content}```")
+                        except Exception as e:
+                            print(f"Erro ao traduzir bloco de código: {e}")
+                            result.append(part_text)
+                    else:
+                        # Código inline
+                        content = part_text[1:-1]
+                        try:
+                            translated_content = self.translator.translate(content, dest=self.target_lang).text
+                            result.append(f"`{translated_content}`")
+                        except Exception as e:
+                            print(f"Erro ao traduzir código inline: {e}")
+                            result.append(part_text)
+                else:
+                    # Extrair conteúdo e delimitadores
+                    if part_text.startswith('*') and part_text.endswith('*'):
+                        if part_text.startswith('**') and part_text.endswith('**'):
+                            opening = closing = '**'
+                            content = part_text[2:-2]
+                        else:
+                            opening = closing = '*'
+                            content = part_text[1:-1]
+                    elif part_text.startswith('_') and part_text.endswith('_'):
+                        if part_text.startswith('__') and part_text.endswith('__'):
+                            opening = closing = '__'
+                            content = part_text[2:-2]
+                        else:
+                            opening = closing = '_'
+                            content = part_text[1:-1]
+                    elif part_text.startswith('"') and part_text.endswith('"'):
+                        opening = closing = '"'
+                        content = part_text[1:-1]
+                    else:
+                        # Caso não identificado, manter como está
+                        result.append(part_text)
+                        continue
+                    
+                    # Traduzir o conteúdo
+                    try:
+                        translated_content = self.translator.translate(content, dest=self.target_lang).text
+                        result.append(f"{opening}{translated_content}{closing}")
+                    except Exception as e:
+                        print(f"Erro ao traduzir conteúdo delimitado: {e}")
+                        result.append(part_text)
         
-        # Traduzir o texto restante (que não está entre delimitadores)
-        if processed_text == text:
-            # Se nenhum delimitador foi encontrado, traduzir normalmente
-            try:
-                translated = self.translator.translate(processed_text, dest=self.target_lang).text
-                processed_text = translated if translated and translated != "None" else processed_text
-            except Exception as e:
-                print(f"Erro ao traduzir texto completo: {e}")
+        # Juntar o resultado
+        final_text = ''.join(result)
         
-        # Restaurar as variáveis protegidas
-        for placeholder, original_var in protected_vars.items():
-            processed_text = processed_text.replace(placeholder, original_var)
+        # Restaurar placeholders na ordem correta
         
-        # Restaurar links de imagens
-        for placeholder, original_img in image_links.items():
-            processed_text = processed_text.replace(placeholder, original_img)
+        # 1. Restaurar quebras de linha
+        for placeholder, original in newline_placeholders.items():
+            final_text = final_text.replace(placeholder, original)
         
-        # Pós-processamento: reverter nomes para {{user}} e {{char}}
+        # 2. Restaurar variáveis
+        for placeholder, original in protected_vars.items():
+            final_text = final_text.replace(placeholder, original)
+        
+        # 3. Restaurar imagens (por último para evitar conflitos)
+        for placeholder, original in image_links.items():
+            final_text = final_text.replace(placeholder, original)
+        
+        # Restaurar variáveis de usuário e personagem
         if has_user_var:
-            processed_text = processed_text.replace("James", "{{user}}")
+            final_text = final_text.replace("James", "{{user}}")
         if has_char_var:
-            processed_text = processed_text.replace("Jane", "{{char}}")
+            final_text = final_text.replace("Jane", "{{char}}")
         
-        # Preservar quebras de linha
-        result_newlines = processed_text.count('\n')
-        if original_newlines != result_newlines:
-            if original_newlines > result_newlines:
-                processed_text += '\n' * (original_newlines - result_newlines)
-            else:
-                while processed_text.count('\n') > original_newlines and processed_text.endswith('\n'):
-                    processed_text = processed_text[:-1]
+        # Verificação final para garantir que todos os placeholders foram substituídos
+        for placeholder in image_links:
+            if placeholder in final_text:
+                print(f"Aviso: Placeholder de imagem {placeholder} não foi substituído corretamente")
+                final_text = final_text.replace(placeholder, image_links[placeholder])
         
-        return processed_text
+        return final_text
+
     def process_character(self, image_path):
         """Process a character card for translation"""
         if image_path.name in self.db:
