@@ -486,19 +486,6 @@ class CharacterProcessor:
         
         return text
 
-    def translate_segment(self, text):
-        """Traduz um segmento de texto simples com tratamento de None"""
-        if not text or not text.strip():
-            return text
-        
-        try:
-            translated = self.translator.translate(text, dest=self.target_lang).text
-            print(f"Traduzido: '{text}' -> '{translated}'")
-            return translated if translated is not None else text
-        except Exception as e:
-            print(f"Erro na tradução: {e}")
-            return text
-
     def translate_text(self, text, char_name=None):
         """Função principal de tradução com preservação rigorosa de espaçamento e cache"""
         if not text or not isinstance(text, str):
@@ -537,8 +524,36 @@ class CharacterProcessor:
         original_placeholders = []
         for match in re.finditer(r'\{\{[^{}]+\}\}', text):
             original_placeholders.append((match.group(0), match.start(), match.end()))
+
+        braces_pattern = r'(\s*)(\{\{[^{}]+\}\})(\s*)'
+        braces_map = {}
+        braces_counter = 0
         
-        # PASSO 2: Proteger placeholders genéricos e especiais, preservando espaçamento exato
+        def protect_all_braces(match):
+            nonlocal braces_counter
+            spaces_before = match.group(1)
+            content = match.group(2).strip()  # Remove espaços dentro do {{...}}
+            spaces_after = match.group(3)
+            
+            # Verificar se é um placeholder especial (user/char)
+            if content.lower() in [p.lower() for p in placeholder_substitutions.keys()]:
+                for ph, subst in placeholder_substitutions.items():
+                    if content.lower() == ph.lower():
+                        # Substitui mantendo espaços externos
+                        token = f"__SPECIAL_PLACEHOLDER_{braces_counter}__"
+                        braces_map[token] = (spaces_before, subst, spaces_after)
+                        braces_counter += 1
+                        return token
+            
+            # Para outros placeholders {{...}}, preservar exatamente como estão
+            token = f"__GENERAL_PLACEHOLDER_{braces_counter}__"
+            braces_map[token] = (spaces_before, content, spaces_after)
+            braces_counter += 1
+            return token
+        
+        protected_text = re.sub(braces_pattern, protect_all_braces, text)
+        
+        # PASSO 2: Proteger placeholders genéricos e especiais simultaneamente
         placeholder_pattern = r'(\s*\{\{[^{}]+\}\}\s*)'
         placeholder_map = {}
         placeholder_count = 0
@@ -558,16 +573,16 @@ class CharacterProcessor:
                         spaces_after = original[original.find(placeholder_text) + len(placeholder_text):]
                         return f"{spaces_before}{subst}{spaces_after}"
             
-            # Para placeholders genéricos (ex.: {{START}}), usar token e preservar original
+            # Para placeholders genéricos, usar token
             token = f"__PLACEHOLDER_{placeholder_count}__"
             placeholder_count += 1
-            placeholder_map[token] = original  # Preservar espaçamento exato
+            placeholder_map[token] = original
             return token
         
         # Substituir todos os {{...}} por tokens ou substituições
         protected_text = re.sub(placeholder_pattern, protect_all_placeholders, text)
         
-        # PASSO 3: Proteger quebras de linha, preservando espaçamento ao redor de placeholders
+        # 2. Proteger quebras de linha
         newline_tokens = {}
         newline_counter = 0
         
@@ -580,7 +595,7 @@ class CharacterProcessor:
         
         protected_text = re.sub(r'\n+', replace_newlines, protected_text)
         
-        # 4. Continuar com o processamento de markdown e formatação
+        # 3. Continuar com o processamento de markdown e formatação
         print(f"Traduzindo: {protected_text[:30]}..." if len(protected_text) > 30 else f"Traduzindo: {protected_text}")
         
         # Proteger markdown, links, etc.
@@ -595,9 +610,18 @@ class CharacterProcessor:
             markdown_map[token] = match.group(0)
             return token
         
-        protected_text = re.sub(markdown_pattern, protect_markdown, protected_text)
+        newline_token_pattern = r'(__\s*[Nn]ewline_\d+\s*__)'
+        newline_tokens = {}
         
-        # 5. Dividir em segmentos para tradução, preservando formatação
+        def extract_newline_tokens(match):
+            token = f"__PROTECTED_NEWLINE_{len(newline_tokens)}__"
+            newline_tokens[token] = match.group(0)
+            return token
+        
+        # Substituir todos os tokens de newline por tokens protegidos
+        protected_text = re.sub(newline_token_pattern, extract_newline_tokens, text)
+        
+        # 4. Dividir em segmentos para tradução, preservando formatação
         segments = []
         pattern = r'(__PLACEHOLDER_\d+__|__MARKDOWN_\d+__|__NEWLINE_\d+__|\*\*[^*]+\*\*|\*[^*]+\*|__[^_]+__|_[^_]+_|"[^"]+"|[^*"_]+)'
         
@@ -634,11 +658,11 @@ class CharacterProcessor:
                 translated_segment = self.translate_segment(segment)
                 segments.append(translated_segment if translated_segment else segment)
         
-        # 6. Reunir todos os segmentos com verificação de None
+        # 5. Reunir todos os segmentos com verificação de None
         safe_segments = [s if s is not None else "" for s in segments]
         result = ''.join(safe_segments)
         
-        # 7. Restaurar na ordem inversa: primeiro markdown, depois newlines, finalmente placeholders
+        # 6. Restaurar na ordem inversa: primeiro markdown, depois newlines, finalmente placeholders
         for token, original in markdown_map.items():
             result = result.replace(token, original)
         
@@ -665,35 +689,35 @@ class CharacterProcessor:
                             lambda m: m.group(1) + placeholder + m.group(2), 
                             result)
         
-        # Restaurar placeholders genéricos (ex.: {{START}})
+        # Restaurar placeholders genericos
         for token, original in placeholder_map.items():
             result = result.replace(token, original)
         
-        # PASSO FINAL: Corrigir espaçamento ao redor de placeholders dentro de delimitadores
-        # Remover espaços adicionais dentro de [ {{...}} ], " {{...}} ", * {{...}} *
-        result = re.sub(r'(\[|\*|")(\s*\{\{[^{}]*\}\}\s*)', r'\1\2', result)  # Remove espaço antes do placeholder
-        result = re.sub(r'(\s*\{\{[^{}]*\}\}\s*)(\]|\*|")', r'\1\2', result)  # Remove espaço depois do placeholder
+        # Corrigir espaçamento e verificar capitalização após os placeholders
+        result = re.sub(r'(\}\})([^\s\.,;:\)\]}])', r'\1 \2', result)
+        result = re.sub(r'([^\s\(\[\{])(\{\{)', r'\1 \2', result)
         
         # Corrigir capitalização após placeholders
         placeholder_positions = list(re.finditer(r'\{\{[^{}]+\}\}(\s*)(\w)?', result))
-        if placeholder_positions:
-            for idx, match in enumerate(placeholder_positions):
-                if idx in capitalization_map and match.group(2):
-                    # Se havia uma letra após o placeholder no original
-                    is_lowercase = capitalization_map[idx]
-                    following_char = match.group(2)
-                    if is_lowercase and following_char.isupper():
-                        result = result[:match.start(2)] + following_char.lower() + result[match.end(2):]
-                    elif not is_lowercase and following_char.islower():
-                        result = result[:match.start(2)] + following_char.upper() + result[match.end(2):]
+        
+        for idx, match in enumerate(placeholder_positions):
+            if idx in capitalization_map and match.group(2):
+                # Se no texto original era minúsculo e agora está maiúsculo
+                if capitalization_map[idx] and match.group(2).isupper():
+                    char_pos = match.start(2)
+                    result = result[:char_pos] + match.group(2).lower() + result[char_pos+1:]
+                # Se no texto original era maiúsculo e agora está minúsculo
+                elif not capitalization_map[idx] and match.group(2).islower():
+                    char_pos = match.start(2)
+                    result = result[:char_pos] + match.group(2).upper() + result[char_pos+1:]
         
         # Corrigir problemas com espaços e quebras de linha
         result = re.sub(r'\s+\n', '\n', result)  # Remove espaços antes de quebras de linha
         
-        # 8. Aplicar correções finais
+        # 7. Aplicar correções finais
         result = self.fix_special_characters(result)
         
-        # 9. Adicionar ao cache
+        # 8. Adicionar ao cache
         self._translation_cache[cache_key] = result
         
         return result
