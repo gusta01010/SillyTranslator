@@ -475,18 +475,19 @@ class CharacterProcessor:
             processed_text = processed_text.replace(var, placeholder, 1)
         
         # Padrões para identificar texto entre diferentes delimitadores
+        # Modificado para capturar espaços antes e depois do conteúdo
         delimiters = [
-            (r'(\*+)([^\*]+?)(\*+)', 1, 2, 3),        # *texto* ou **texto** ou ***texto***
-            (r'(_+)([^_]+?)(_+)', 1, 2, 3),           # _texto_ ou __texto__
-            (r'(`)([^`]+?)(`)', 1, 2, 3),             # `texto`
-            (r'(")([^"]+?)(")', 1, 2, 3),             # "texto"
-            (r'(\{{{)([^}]+?)(\}\}\})', 1, 2, 3),     # {{{texto}}}
-            (r'(\[)([^\]]+?)(\])', 1, 2, 3),          # [texto]
-            (r'(\()([^)]+?)(\))', 1, 2, 3)            # (texto)
+            (r'(\*+)(\s*)([^\*]+?)(\s*)(\*+)', 1, 2, 3, 4, 5),    # *texto* ou **texto** ou ***texto***
+            (r'(_+)(\s*)([^_]+?)(\s*)(_+)', 1, 2, 3, 4, 5),       # _texto_ ou __texto__
+            (r'(`)(\s*)([^`]+?)(\s*)(`)', 1, 2, 3, 4, 5),         # `texto`
+            (r'(")(\s*)([^"]+?)(\s*)(")', 1, 2, 3, 4, 5),         # "texto"
+            (r'(\{{{)(\s*)([^}]+?)(\s*)(\}\}\})', 1, 2, 3, 4, 5), # {{{texto}}}
+            (r'(\[)(\s*)([^\]]+?)(\s*)(\])', 1, 2, 3, 4, 5),      # [texto]
+            (r'(\()(\s*)([^)]+?)(\s*)(\))', 1, 2, 3, 4, 5)        # (texto)
         ]
         
         # Processar cada tipo de delimitador
-        for pattern, open_group, content_group, close_group in delimiters:
+        for pattern, open_group, space_before, content_group, space_after, close_group in delimiters:
             last_pos = 0
             result = ""
             
@@ -497,7 +498,9 @@ class CharacterProcessor:
                 
                 # Extrair componentes
                 opening = match.group(open_group)
+                space_before_content = match.group(space_before)
                 content = match.group(content_group)
+                space_after_content = match.group(space_after)
                 closing = match.group(close_group)
                 
                 # Traduzir apenas o conteúdo
@@ -513,8 +516,8 @@ class CharacterProcessor:
                     print(f"Erro ao traduzir dentro de delimitadores: {e}")
                     translated_content = content
                 
-                # Reconstruir com delimitadores originais
-                result += opening + translated_content + closing
+                # Reconstruir com delimitadores e espaçamentos originais
+                result += opening + space_before_content + translated_content + space_after_content + closing
                 
                 last_pos = match.end()
             
