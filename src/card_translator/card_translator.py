@@ -1294,7 +1294,7 @@ def update_gender_instruction(processor):
 def configure_model(processor):
     available_models = {
         "groq": ["llama-3.3-70b-versatile", "qwen-2.5-32b", "mistral-saba-24b", "gemma2-9b-it", "llama-3.1-8b-instant"],
-        "openrouter": ["modelA", "modelB"]
+        "openrouter": ["nousresearch/deephermes-3-llama-3-8b-preview:free", "moonshotai/moonlight-16b-a3b-instruct:free", "sophosympatheia/rogue-rose-103b-v0.2:free"]
     }
     provider_options = {"1": "groq", "2": "openrouter"}
     while True:
