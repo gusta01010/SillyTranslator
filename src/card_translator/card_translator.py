@@ -36,6 +36,19 @@ LANGUAGES = {
     'ko': '한국어',
     'ru': 'Русский'
 }
+# NEW: English language names as defined in the "en" block
+EN_INTERFACE_OTHERS = {
+    "pt": "Portuguese",
+    "en": "English",
+    "es": "Spanish",
+    "fr": "French",
+    "de": "German",
+    "it": "Italian",
+    "ja": "Japanese",
+    "zh-cn": "Chinese",
+    "ko": "Korean",
+    "ru": "Russian"
+}
 
 PLACEHOLDER_MAP = {
     'pt': {
@@ -146,7 +159,13 @@ class CharacterProcessor:
             'interface_lang': 'pt',
             'translation_service': 'google',
             'characters_dir': '',
-            'use_char_name': False # Changed from use_jane to use_char_name
+            'use_char_name': False, # Changed from use_jane to use_char_name
+            'api_key_groq': "",
+            'api_key_openrouter': "",
+            'inference': "groq",
+            'model_groq': "llama-3.1",       # novo
+            'model_openrouter': "",          # novo
+            'llm_char': "{{char}}"
         }
         try:
             if TRANSLATION_SETTINGS_FILE.exists():
@@ -164,6 +183,15 @@ class CharacterProcessor:
         self.translation_service = self.translation_settings.get('translation_service', 'google')
         self.interface_lang = self.translation_settings.get('interface_lang', 'pt')
         self.use_char_name = self.translation_settings.get('use_char_name', False) # Changed from use_jane to use_char_name
+        self.api_key_groq = self.translation_settings.get('api_key_groq', "")
+        self.api_key_openrouter = self.translation_settings.get('api_key_openrouter', "")
+        self.inference = self.translation_settings.get('inference', "groq")
+        # Use o modelo correspondente ao provider:
+        if self.inference == "groq":
+            self.model = self.translation_settings.get('model_groq', "")
+        else:
+            self.model = self.translation_settings.get('model_openrouter', "")
+        self.llm_char = self.translation_settings.get('llm_char', "{{char}}")
 
     def set_translator_service(self):
         if self.translation_service == 'google':
@@ -172,11 +200,16 @@ class CharacterProcessor:
         elif self.translation_service == 'mymemory':
             from lib.mymemory_translator import MyMemoryTranslatorService
             self.translator = MyMemoryTranslatorService()
+        elif self.translation_service == 'llm':
+            # Use a chave e o modelo do provider atual:
+            api_key = self.api_key_groq if self.inference=="groq" else self.api_key_openrouter
+            self.translator = LLMTranslatorService(api_key, self.inference, self.model)
         else:
             from lib.free_translator import GoogleTranslatorService
             self.translator = GoogleTranslatorService()
 
     def save_translation_settings(self):
+        # Salve também os modelos para cada provider
         self.translation_settings.update({
             'target_lang': self.target_lang,
             'translate_angle': self.translate_angle,
@@ -184,7 +217,13 @@ class CharacterProcessor:
             'interface_lang': self.interface_lang,
             'translation_service': self.translation_service,
             'characters_dir': self.characters_dir,
-            'use_char_name': self.use_char_name # Changed from use_jane to use_char_name
+            'use_char_name': self.use_char_name, # Changed from use_jane to use_char_name
+            'api_key_groq': self.api_key_groq,
+            'api_key_openrouter': self.api_key_openrouter,
+            'inference': self.inference,
+            'model_groq': self.model if self.inference=="groq" else self.translation_settings.get('model_groq', ""),
+            'model_openrouter': self.model if self.inference=="openrouter" else self.translation_settings.get('model_openrouter', ""),
+            'llm_char': self.llm_char
         })
         TRANSLATION_SETTINGS_FILE.write_text(json.dumps(self.translation_settings, indent=2))
 
@@ -378,43 +417,112 @@ class CharacterProcessor:
         # Para texto regular, use a tradução normal
         return self.translate_text(text, char_name)
 
+    def load_llm_instructions(self) -> Dict[str, Any]:
+                    try:
+                        if INTERFACE_LANG_FILE.exists():
+                            data = json.loads(INTERFACE_LANG_FILE.read_text(encoding='utf-8'))
+                            # Tenta carregar as instruções do idioma da tradução; senão, usa o bloco 'en'
+                            lang_section = data.get(self.target_lang, data.get('en', {}))
+                            return lang_section.get('llm_instructions', {})
+                        else:
+                            return {}
+                    except Exception as e:
+                        print(f"Error loading LLM instructions: {e}")
+                        return {}
+
     def translate_text(self, text, char_name=None):
-        # Modificar o método translate_text para usar o método translate_character_card
         if not text or not isinstance(text, str):
             return text
 
-        # Cálculo da chave de cache
-        import hashlib
-        key_input = f"{text}_{char_name}_{self.target_lang}"
-        cache_key = hashlib.md5(key_input.encode('utf-8')).hexdigest()
-        if cache_key in self._translation_cache:
-            print(f"{self.get_text('debug.using_cache', 'Using cache for')}: {text[:30] + '...' if len(text) > 30 else text}")
-            return self._translation_cache[cache_key]
-
-        # Verifica se é um cartão de personagem
-        if text.startswith('[') and text.endswith(']'):
-            result = self.translate_character_card(text, char_name)
+        if self.translation_service == "llm":
+            key = (text, char_name)
+            if not hasattr(self, '_llm_cache'):
+                self._llm_cache = {}
+            if key in self._llm_cache:
+                return self._llm_cache[key]
+            name_part = f"{char_name}" if char_name else ""
+            
+            # Verifica se a flag use_english_instructions está ativa nas configurações
+            if self.translation_settings.get('use_english_instructions', True):
+                # Versão fixa em inglês
+                if self.translate_angle:
+                    angle_instruction = "Translate also texts inside <...>."
+                else:
+                    angle_instruction = ("Do not translate texts inside <>; Maintain <...> original. "
+                                        "Do not translate texts inside {{}}; Maintain {{...}} original.")
+                if name_part:
+                    if self.translate_name:
+                        name_instruction = "Include names translation"
+                    else:
+                        name_instruction = f"Do not translate the text: {name_part}."
+                else:
+                    name_instruction = ""
+                target_lang_label = EN_INTERFACE_OTHERS.get(self.target_lang, self.target_lang)
+                choice_gender_val = self.translation_settings.get('choice_gender', "3")
+                if choice_gender_val == "1":
+                    user_gender = "{{user}} is male."
+                elif choice_gender_val == "2":
+                    user_gender = "{{user}} is female."
+                else:
+                    user_gender = ""
+                
+                system_instruction = (
+                    f"You're a translator. Translate the content to {target_lang_label} using the same formatting used in Roleplay. "
+                    f"{angle_instruction} {name_instruction}"
+                )
+                # Na versão fixa, usamos um padrão direto para o conteúdo do usuário:
+                user_content = f"Content:\n```{text}```"
+            else:
+                # Versão usando as instruções do JSON, caso existam
+                instructions = self.load_llm_instructions()
+                if self.translate_angle:
+                    angle_instruction = instructions.get('translate_angle', "Translate also texts inside <...>.")
+                else:
+                    angle_instruction = instructions.get('no_translate_angle', 
+                        "Do not translate texts inside <>; Maintain <...> original. Do not translate texts inside {{}}; Maintain {{...}} original.")
+                if name_part:
+                    if self.translate_name:
+                        name_instruction = instructions.get('translate_name', "Include names translation")
+                    else:
+                        name_instruction = instructions.get('no_translate_name', "Do not translate the text: {name_part}.").format(name_part=name_part)
+                else:
+                    name_instruction = ""
+                system_prefix = instructions.get(
+                    'system_prefix',
+                    f"You're a translator. Translate the content to {EN_INTERFACE_OTHERS.get(self.target_lang, self.target_lang)} using the same formatting used in Roleplay."
+                )
+                raw_user_content_prefix = instructions.get('user_content_prefix', "Content:\n```{text}```")
+                # Garantir que qualquer "{}" seja substituído por "{text}"
+                raw_user_content_prefix = raw_user_content_prefix.replace("{}", "{text}")
+                user_content = raw_user_content_prefix.format(text=text)
+                system_instruction = f"{system_prefix} {angle_instruction} {name_instruction}"
+                user_gender = self.translation_settings.get('user_gender_instruction', '')
+            
+            if user_gender:
+                system_instruction += f" {user_gender}"
+            
+            prompt = f"System: {system_instruction}\nUser: {user_content}"
+            try:
+                response = self.translator.translate(prompt, dest=self.target_lang)
+                m = re.search(r"```([^`]+)```", response.text, re.DOTALL)
+                if m:
+                    result = m.group(1).strip()
+                else:
+                    result = response.text.strip()
+                if char_name:
+                    result = result.replace(char_name, "{{char}}")
+                self._llm_cache[key] = result
+                return result
+            except Exception as e:
+                print(f"LLM translation error: {e}")
+                return text
         else:
-            # Para texto normal, use a tradução segmentada
-            result = self.translate_segment(text, char_name) # Pass char_name
-        self._translation_cache[cache_key] = result
-        return result
-
-    def fix_special_characters(self, text):
-        """Fix special characters like ~ and - according to the requirements"""
-        if not text:
-            return text
-
-        # Fix tildes attached to characters
-        text = re.sub(r'(\S)\s+~', r'\1~', text)
-        text = re.sub(r'~\s+(\S)', r'~\1', text)
-
-        # Fix hyphens with spaces (capturando todas as variações)
-        text = re.sub(r'(\w+)\s+-\s+(\w+)', r'\1-\2', text)  # espaço antes e depois
-        text = re.sub(r'(\w+)\s+-(\w+)', r'\1-\2', text)      # espaço só antes
-        text = re.sub(r'(\w+)-\s+(\w+)', r'\1-\2', text)      # espaço só depois
-
-        return text
+            if text.startswith('[') and text.endswith(']'):
+                result = self.translate_character_card(text, char_name)
+            else:
+                result = self.translate_segment(text, char_name)
+            self._translation_cache[hash(text)] = result
+            return result
 
     def translate_segment(self, text, char_name=None): # Added char_name parameter
         """Traduz segmentos preservando delimitadores, variáveis e formatação"""
@@ -735,26 +843,45 @@ class CharacterProcessor:
 
         # Process fields in the root level
         for field, should_translate in translatable_fields.items():
-            if field in data and isinstance(data[field], str) and should_translate:
-                data[field] = self.translate_text(data[field], original_name) # Pass original_name
+            if field in data and isinstance(data[field], str):
+                # For the 'name' field, do not substitute {{char}}
+                if field == "name" and not self.translate_name:
+                    continue
+                substitute = None if field == "name" else original_name
+                data[field] = self.translate_text(data[field], substitute)
 
         # Process fields in the 'data' dictionary if it exists
         if 'data' in data and isinstance(data['data'], dict):
             for field, should_translate in translatable_fields.items():
                 if field in data['data'] and isinstance(data['data'][field], str) and should_translate:
-                    data['data'][field] = self.translate_text(data['data'][field], original_name) # Pass original_name
+                    substitute = None if field == "name" else original_name
+                    data['data'][field] = self.translate_text(data['data'][field], substitute)
+
+        # Translate "depth_prompt" prompt if in root level
+        if 'depth_prompt' in data and isinstance(data['depth_prompt'], dict):
+            if 'prompt' in data['depth_prompt'] and isinstance(data['depth_prompt']['prompt'], str):
+                data['depth_prompt']['prompt'] = self.translate_text(data['depth_prompt']['prompt'], original_name)
+
+        # Translate depth_prompt in data.extensions
+        if 'data' in data and isinstance(data['data'], dict):
+            if 'extensions' in data['data'] and isinstance(data['data']['extensions'], dict):
+                if 'depth_prompt' in data['data']['extensions'] and isinstance(data['data']['extensions']['depth_prompt'], dict):
+                    if 'prompt' in data['data']['extensions']['depth_prompt'] and isinstance(data['data']['extensions']['depth_prompt']['prompt'], str):
+                        data['data']['extensions']['depth_prompt']['prompt'] = self.translate_text(
+                            data['data']['extensions']['depth_prompt']['prompt'], 
+                            original_name
+                        )
 
         # Process alternate_greetings if they exist
         if 'alternate_greetings' in data and isinstance(data['alternate_greetings'], list):
             data['alternate_greetings'] = [
-                self.translate_text(greeting, original_name) # Pass original_name
+                self.translate_text(greeting, original_name)
                 for greeting in data['alternate_greetings']
                 if isinstance(greeting, str)
             ]
-
         if 'data' in data and 'alternate_greetings' in data['data'] and isinstance(data['data']['alternate_greetings'], list):
             data['data']['alternate_greetings'] = [
-                self.translate_text(greeting, original_name) # Pass original_name
+                self.translate_text(greeting, original_name)
                 for greeting in data['data']['alternate_greetings']
                 if isinstance(greeting, str)
             ]
@@ -848,6 +975,51 @@ class CharacterProcessor:
                 'data' in characters_path.parts and
                 'default-user' in characters_path.parts)
 
+class LLMTranslatorService:
+    def __init__(self, api_key, inference, model):
+        self.api_key = api_key
+        self.inference = inference
+        self.model = model
+
+    def translate(self, prompt, dest):
+        if self.inference == "groq":
+            from groq import Groq
+            client = Groq(api_key=self.api_key)
+            chat_completion = client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model=self.model
+            )
+            print (prompt)
+            class SimpleResponse:
+                pass
+            simple = SimpleResponse()
+            simple.text = chat_completion.choices[0].message.content
+            print (simple)
+            return simple
+        elif self.inference == "openrouter":
+            from openai import OpenAI
+            client = OpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=self.api_key
+            )
+            completion = client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                extra_headers={
+                }
+            )
+            class SimpleResponse:
+                pass
+            simple = SimpleResponse()
+            simple.text = completion.choices[0].message.content
+            return simple
+        else:
+            class SimpleResponse:
+                pass
+            simple = SimpleResponse()
+            simple.text = "Translation error: unsupported inference method."
+            return simple
+
 class CharacterHandler(FileSystemEventHandler):
     def __init__(self, processor):
         self.processor = processor
@@ -862,7 +1034,11 @@ def show_current_settings(processor):
     target_lang_name = processor.interface_texts.get('others', {}).get(processor.target_lang, LANGUAGES.get(processor.target_lang, 'Unknown'))
     print(f"{processor.get_text('translation_language')}: {target_lang_name}")
 
-    print(f"{processor.get_text('translation_service')}: {processor.translation_service}")
+    service_display = processor.translation_service
+    if processor.translation_service == "llm":
+        service_display = f"{processor.model} (LLM)"
+    print(f"{processor.get_text('translation_service')}: {service_display}")
+
     status = processor.get_text('status.on') if processor.monitoring else processor.get_text('status.off')
     print(f"{processor.get_text('monitoring')}: {status}")
     backup_count = len(list(ORIGINAL_DIR.glob('*.png')))
@@ -884,7 +1060,8 @@ def show_menu(processor):
         print(f"{Fore.GREEN}7.{Style.RESET_ALL} {processor.get_text('menu.select_directory')}" +
               (f" {Fore.RED}{processor.get_text('prompts.directory_required')}{Style.RESET_ALL}"
                if not processor.verify_characters_dir() else ""))
-        print(f"{Fore.GREEN}8.{Style.RESET_ALL} {processor.get_text('menu.exit')}")
+        print(f"{Fore.GREEN}8.{Style.RESET_ALL} Selecionar modelo")
+        print(f"{Fore.GREEN}9.{Style.RESET_ALL} Sair")
 
         choice = input(f"\n{processor.get_text('prompts.choose')}: ")
 
@@ -908,46 +1085,63 @@ def show_menu(processor):
         elif choice == '7':
             select_sillytavern_directory(processor)
         elif choice == '8':
+            configure_model(processor)
+        elif choice == '9':
             break
 
 def configure_translation_language(processor):
+    # Replace direct string prompt for LLM choice with interface text key
+    choice_llm = input(processor.get_text('prompts.ask_use_llm')).strip().lower() or "n"
+    if choice_llm.startswith("s"):
+        processor.translation_service = "llm"
+    else:
+        processor.translation_service = "google"
+    
+    # NEW: Move available languages block immediately after choice_llm
     print(f"\n{processor.get_text('debug.available_languages')}:")
     for code, name in LANGUAGES.items():
-        # Use the name from 'others' in current interface language
         display_name = processor.interface_texts.get('others', {}).get(code, name)
         print(f"{code.upper()}: {display_name}")
-
-    current_lang = processor.interface_texts.get('others', {}).get(processor.target_lang,
-                  LANGUAGES.get(processor.target_lang, 'Unknown'))
+    current_lang = processor.interface_texts.get('others', {}).get(processor.target_lang, LANGUAGES.get(processor.target_lang, 'Unknown'))
     new_lang = input(f"\n{processor.get_text('prompts.choose')} ({processor.get_text('prompts.keep_current')} {current_lang}): ").lower() or processor.target_lang
-
     if new_lang in LANGUAGES:
         processor.target_lang = new_lang
 
-    current_translate_name = processor.get_text('prompts.yes') if processor.translate_name else processor.get_text('prompts.no')
-    choice = input(f"{processor.get_text('prompts.translate_names_keep').format(current_translate_name)}: ").lower()
-    if choice and choice in processor.get_text('prompts.yes')[0].lower():
-        processor.translate_name = True
-    elif choice and choice in processor.get_text('prompts.no')[0].lower():
-        processor.translate_name = False
-
-    current_translate_angle = processor.get_text('prompts.yes') if processor.translate_angle else processor.get_text('prompts.no')
-    choice = input(f"{processor.get_text('prompts.translate_angles_keep').format(current_translate_angle)}: ").lower()
-    if choice and choice in processor.get_text('prompts.yes')[0].lower():
-        processor.translate_angle = True
-    elif choice and choice in processor.get_text('prompts.no')[0].lower():
-        processor.translate_angle = False
-
-    current_use_char_name = processor.get_text('prompts.yes') if processor.use_char_name else processor.get_text('prompts.no') # Changed from use_jane to use_char_name
-    choice = input(f"{processor.get_text('prompts.use_char_name_keep').format(current_use_char_name)}: ").lower() # Changed prompt
-    if choice and choice in processor.get_text('prompts.yes')[0].lower():
-        processor.use_char_name = True
-    elif choice and choice in processor.get_text('prompts.no')[0].lower():
-        processor.use_char_name = False
+    # Use interface texts for names translation prompt
+    choice_names = input(processor.get_text('prompts.translate_names') + " (S/N ou Enter para manter sim): ").strip().lower() or "s"
+    processor.translate_name = choice_names.startswith("s")
+    # Use interface text for angle translation prompt
+    choice_angle = input(processor.get_text('prompts.translate_angles') + " (S/N ou Enter para manter não): ").strip().lower() or "n"
+    processor.translate_angle = choice_angle.startswith("s")
+    # Prompt for using character name via interface text
+    current_use = processor.get_text('prompts.yes') if processor.use_char_name else processor.get_text('prompts.no')
+    prompt_text = processor.get_text('prompts.use_char_name_keep').format(current_use)
+    choice_char = input(prompt_text).strip().lower() or current_use[0].lower()
+    processor.use_char_name = choice_char.startswith(processor.get_text('prompts.yes')[0].lower())
 
     processor.save_translation_settings()
     processor.apply_translation_settings()
+    
+    print("\n" + processor.get_text('prompts.select_user_profile') + ":")
+    with open(INTERFACE_LANG_FILE, encoding='utf-8') as f:
+        lang_data = json.loads(f.read())
+    target_texts = lang_data.get(processor.target_lang, lang_data.get('en', {}))
+    prompts_target = target_texts.get('prompts', {})
 
+    print("1. {{user}} " + prompts_target.get('user_profile_male', "male") + ".")
+    print("2. {{user}} " + prompts_target.get('user_profile_female', "female") + ".")
+    print("3. " + prompts_target.get('user_profile_ignore', "ignore"))
+    choice_gender = input(processor.get_text('prompts.choose_option') + ": ").strip()
+    # Salvar tanto o texto quanto o número da opção escolhida
+    if choice_gender == "1":
+        processor.translation_settings['user_gender_instruction'] = "{{user}} " + prompts_target.get('user_profile_male', "male") + "."
+    elif choice_gender == "2":
+        processor.translation_settings['user_gender_instruction'] = "{{user}} " + prompts_target.get('user_profile_female', "female") + "."
+    else:
+        processor.translation_settings['user_gender_instruction'] = ""
+    # Armazena também o valor numérico escolhido
+    processor.translation_settings['choice_gender'] = choice_gender
+    processor.save_translation_settings()
 def configure_translation_service(processor):
     print(f"\n{Fore.BLUE}{processor.get_text('prompts.translation_services_available')}:{Style.RESET_ALL}")
     services = {
@@ -982,6 +1176,14 @@ def configure_interface_language(processor):
         processor.save_translation_settings()
 
 def start_monitoring(processor):
+    # Antes de iniciar, verifique se a chave e o modelo do provider atual estão definidos
+    current_api = processor.api_key_groq if processor.inference == "groq" else processor.api_key_openrouter
+    if not current_api:
+        print(f"\n{Fore.RED}Erro: Chave API para o provider '{processor.inference}' não foi configurada!{Style.RESET_ALL}")
+        return
+    if not processor.model:
+        print(f"\n{Fore.RED}Erro: Modelo para o provider '{processor.inference}' não foi selecionado!{Style.RESET_ALL}")
+        return
     processor.monitoring = True
 
     # Mostra mensagem de verificação automática apenas se o DB estiver vazio
@@ -1061,6 +1263,97 @@ def select_sillytavern_directory(processor):
             print(f"\n{Fore.RED}{processor.get_text('prompts.directory_invalid')}{Style.RESET_ALL}")
             processor.characters_dir = ''
             processor.save_translation_settings()
+
+def update_gender_instruction(processor):
+    """
+    Atualiza automaticamente a instrução de gênero (user_gender_instruction)
+    conforme o valor de use_english_instructions.
+    Se True, utiliza os textos do bloco 'prompts' de 'en';
+    se False, utiliza os textos do bloco do idioma de tradução (target_lang).
+    """
+    with open(INTERFACE_LANG_FILE, encoding='utf-8') as f:
+        lang_data = json.loads(f.read())
+    if processor.translation_settings.get('use_english_instructions', True):
+        prompts_src = lang_data.get('en', {}).get('prompts', {})
+    else:
+        prompts_src = lang_data.get(processor.target_lang, lang_data.get('en', {})).get('prompts', {})
+    
+    # Supondo que já exista alguma indicação do gênero (por exemplo, se no valor atual
+    # constar "male" ou "女性"/"feminine", etc.), atualize; caso contrário, mantenha vazio.
+    current = processor.translation_settings.get('user_gender_instruction', '')
+    if "male" in current.lower() or "Male" in current:
+        new_text = "{{user}} " + prompts_src.get('user_profile_male', "male") + "."
+    elif "female" in current.lower() or "Female" in current:
+        new_text = "{{user}} " + prompts_src.get('user_profile_female', "female") + "."
+    else:
+        new_text = ""
+    
+    processor.translation_settings['user_gender_instruction'] = new_text
+    processor.save_translation_settings()
+
+def configure_model(processor):
+    available_models = {
+        "groq": ["llama-3.3-70b-versatile", "qwen-2.5-32b", "mistral-saba-24b", "gemma2-9b-it", "llama-3.1-8b-instant"],
+        "openrouter": ["modelA", "modelB"]
+    }
+    provider_options = {"1": "groq", "2": "openrouter"}
+    while True:
+        print("\n--- " + processor.get_text('menu.model_configuration') + " ---")
+        print(processor.get_text('prompts.select_provider') + ":")
+        for num, prov in provider_options.items():
+            sel = f" {Fore.YELLOW}({processor.get_text('prompts.selected')}){Style.RESET_ALL}" if processor.inference == prov else ""
+            print(f"{num}. {prov}{sel}")
+        print("\n---- API KEY ----")
+        cur_key = processor.api_key_groq if processor.inference == "groq" else processor.api_key_openrouter
+        key_disp = f" {Fore.RED}({processor.get_text('prompts.required')}){Style.RESET_ALL}" if not cur_key else f" ({cur_key})"
+        print("3. " + processor.get_text('prompts.type_api_key') + key_disp)
+        print("\n---- " + processor.get_text('menu.model') + " ----")
+        models = available_models.get(processor.inference, [])
+        base = 4
+        for idx, m in enumerate(models):
+            option = base + idx
+            sel = f" {Fore.YELLOW}({processor.get_text('prompts.selected')}){Style.RESET_ALL}" if processor.model == m else ""
+            print(f"{option}. {m}{sel}")
+        # Adiciona a opção de toggle para USE_EN_INSTRUCT
+        current_flag = processor.translation_settings.get('use_english_instructions', True)
+        color = Fore.GREEN if current_flag else Fore.RED
+        option_toggle = base + len(models)
+        print(f"{option_toggle}. USE_EN_INSTRUCT = {color}{current_flag}{Style.RESET_ALL}")
+        exit_option = option_toggle + 1
+        print(f"\n{exit_option}. " + processor.get_text('menu.exit'))
+        
+        choice = input(processor.get_text('prompts.choose_option') + ": ").strip()
+        if choice in provider_options:
+            processor.inference = provider_options[choice]
+            if processor.inference == "groq":
+                processor.model = processor.translation_settings.get('model_groq', "")
+            else:
+                processor.model = processor.translation_settings.get('model_openrouter', "")
+        elif choice == "3":
+            new_key = input(processor.get_text('prompts.type_api_key') + ": ").strip()
+            if processor.inference == "groq":
+                processor.api_key_groq = new_key
+            else:
+                processor.api_key_openrouter = new_key
+        else:
+            try:
+                num_choice = int(choice)
+                if base <= num_choice < base + len(models):
+                    processor.model = models[num_choice - base]
+                elif num_choice == option_toggle:
+                    # Toggle da flag use_english_instructions
+                    processor.translation_settings['use_english_instructions'] = not current_flag
+                    processor.save_translation_settings()
+                    update_gender_instruction(processor)
+                    print(f"USE_EN_INSTRUCT set to {processor.translation_settings['use_english_instructions']}")
+                elif num_choice == exit_option:
+                    break
+                else:
+                    print(processor.get_text('error.invalid_option'))
+            except Exception as e:
+                print(f"{processor.get_text('error.invalid_input')}: {e}")
+        processor.save_translation_settings()
+        processor.set_translator_service()
 
 if __name__ == "__main__":
     os.makedirs(ORIGINAL_DIR, exist_ok=True)
