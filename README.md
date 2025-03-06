@@ -35,30 +35,45 @@ SillyTranslator is a collection of two tools available to download, containing t
 ### Preset translator
 To use the preset translator, first you need to follow these steps:
 
-1. Set up the SillyTavern folder (optional) or use custom folder **(IMPORTANT!)**.
+**1.** Set up the SillyTavern folder (optional) or use custom folder **(IMPORTANT!)**.
+\
+**2.** Set up the language the preset will be translated to and there is an optional box to select if want to translate content inside <>.
+* \**Translate wrapped `<>`**: this one is experimental, you can translate any content inside <>, for example, `<think>` can be translated to `<考える>`
 
-2. Set up the language the preset will be translated to and there is an optional box to select if want to translate content inside <>.
-* **Translate wrapped `<>`**: this one is experimental, you can translate any content inside <>, for example, `<think>` can be translated to `<考える>`
-
-3. Select the .JSON files to be translated.
-
-4. Name the file and save it.
+**3.** Select the .JSON files to be translated.
+\
+**4.** Name the file and save it.
 
 ### Card translator
 To use the card translator, first you need to follow these steps:
 
-1. Set up your interface language.
-1. Select the SillyTavern folder **(IMPORTANT!)**.
-3. Set up the translator.
-Setting up the translator is important, as there are four options:
+**1.** Set up your interface language.\
+**2.** Select the SillyTavern folder **(IMPORTANT!)**.\
+**3.** Set up the translator.\
+Setting up the translator is important, customizations for Non-LLMs and LLMs:
+
+Non-LLMs
 * **Translate name**: you can translate, the character card name from, for example, `James` (en) to `ジェームズ` (ja) if the option is enabled.
 * **Translate wrapped `<>`**: this one is experimental, you can translate any content inside <>, for example, `<think>` can be translated to `<考える>`
 * **Translate wrapped `()`**: translates content inside parentheses separated from the rest of the text
 * **Translate wrapped `[]`**: translates content inside brackets separated from the rest of the text
-* Use Jane (placeholder) instead of {{char}} during translation: Enabling placeholder may improve translation coherence and returns back to {{char}} after the translation is done
+* **Use Jane (placeholder) instead of {{char}} during translation**: Enabling placeholder may improve translation coherence and returns back to {{char}} after the translation is done
+
+
+LLMs
+* **Translate name**: you can translate, the character card name from, for example, `James` (en) to `ジェームズ` (ja) if the option is enabled.
+* **Translate wrapped `<>`**: this one is experimental, you can translate any content inside <>, for example, `<think>` can be translated to `<考える>`
+* **Use characters's name instead of {{char}}**: may improve coherence, uses character's name to translate and after translation goes back to {{char}}
+* **Select character's gender**: optional, may improve coherence with pronouns
   
-4. Select the translation service.
-5. Enable monitoring.
+
+**4.** For Non-LLMs: Select the translation service. OR for LLMs: Select the model and insert the API key
+LLMs
+* **USE_EN_INSTRUCT**
+* Disabled: Sends as the targeted language prompt to AI to translate. **Recommended**
+* Enabled: Sends the prompt in English to AI translate. **Experiental**
+  
+**5.** Enable monitoring.
 
 After enabling the monitoring, it will scan any file inside SillyTavern's character folder to translate, backing up the original file in `Original` folder where the tool is localted, if you want to restore the original files you can press the number `3` in your keyboard and it will restore the files. **The restored original files will not be translated until the second option, `2` is selected, to clean all the translated files status.**
 
