@@ -467,7 +467,7 @@ class CharacterProcessor:
                     user_gender = ""
                 
                 system_instruction = (
-                    f"You're a translator. Translate the content to {target_lang_label} using the same formatting used in Roleplay. "
+                    f"You're a translator. Translate the content to {target_lang_label} using the same formatting used in Roleplay."
                     f"{angle_instruction} {name_instruction}"
                 )
                 # Na versão fixa, usamos um padrão direto para o conteúdo do usuário:
@@ -1004,14 +1004,20 @@ class LLMTranslatorService:
             )
             completion = client.chat.completions.create(
                 model=self.model,
+                max_completion_tokens = 0,
+                max_tokens = 0,
+
                 messages=[{"role": "user", "content": prompt}],
                 extra_headers={
                 }
             )
             class SimpleResponse:
                 pass
+            
+            print (prompt)
             simple = SimpleResponse()
             simple.text = completion.choices[0].message.content
+            print (simple.text)
             return simple
         else:
             class SimpleResponse:
@@ -1294,7 +1300,7 @@ def update_gender_instruction(processor):
 def configure_model(processor):
     available_models = {
         "groq": ["llama-3.3-70b-versatile", "qwen-2.5-32b", "mistral-saba-24b", "gemma2-9b-it", "llama-3.1-8b-instant"],
-        "openrouter": ["nousresearch/deephermes-3-llama-3-8b-preview:free", "moonshotai/moonlight-16b-a3b-instruct:free", "sophosympatheia/rogue-rose-103b-v0.2:free"]
+        "openrouter": ["cognitivecomputations/dolphin3.0-mistral-24b:free", "google/gemini-2.0-pro-exp-02-05:free", "moonshotai/moonlight-16b-a3b-instruct:free", "sophosympatheia/rogue-rose-103b-v0.2:free", "microsoft/phi-3-mini-128k-instruct:free"]
     }
     provider_options = {"1": "groq", "2": "openrouter"}
     while True:
