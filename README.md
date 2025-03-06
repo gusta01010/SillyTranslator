@@ -30,6 +30,10 @@ SillyTranslator is a collection of two tools available to download, containing t
   * 🇩🇪 German
   * 🇪🇸 Spanish
 
+## Requirements
+* ImageMagick
+Requires ImageMagick to be installed and configure the PATH variable.
+
 ## Usage
 
 ### Preset translator
