@@ -446,10 +446,9 @@ class CharacterProcessor:
             if self.translation_settings.get('use_english_instructions', True):
                 # Versão fixa em inglês
                 if self.translate_angle:
-                    angle_instruction = "Translate also texts inside <...>."
+                    angle_instruction = " Translate also texts inside <...>. NEVER translate values inside {{}}; Maintain {{...}} untranslated."
                 else:
-                    angle_instruction = ("Do not translate texts inside <>; Maintain <...> original. "
-                                        "Do not translate texts inside {{}}; Maintain {{...}} original.")
+                    angle_instruction = ("Do not translate texts inside <>; Maintain <...> original. NEVER translate values inside {{}}; Maintain {{...}} untranslated.")
                 if name_part:
                     if self.translate_name:
                         name_instruction = "Include names translation"
