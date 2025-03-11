@@ -43,7 +43,7 @@ To use the preset translator, first you need to follow these steps:
 **1.** Set up the SillyTavern folder (optional) or use custom folder **(IMPORTANT!)**.
 \
 **2.** Set up the language the preset will be translated to and there is an optional box to select if want to translate content inside <>.
-* \**Translate wrapped `<>`**: this one is experimental, you can translate any content inside <>, for example, `<think>` can be translated to `<考える>`
+* **Translate wrapped `<>`**: this one is experimental, you can translate any content inside <>, for example, `<think>` can be translated to `<考える>`
 
 **3.** Select the .JSON files to be translated.
 \
