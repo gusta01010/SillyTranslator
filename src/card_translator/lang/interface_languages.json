@@ -119,11 +119,11 @@
     },
     "llm_instructions": {
         "translate_angle": "Traduza também textos dentro de <...>.",
-        "no_translate_angle": "Não traduza textos dentro de <>; Mantenha <...> original. Não traduza textos dentro de {{}}; Mantenha {{...}} original.",
+        "no_translate_angle": "NÃO PERMITIDO: Não traduza valores dentro de <>; Mantenha <...> original AND Não traduza valores dentro de {{}}; Mantenha {{...}} original.",
         "translate_name": "Inclua tradução de nomes",
         "no_translate_name": "Não traduza o texto: {}.",
         "system_prefix": "Você é um tradutor. Traduza o conteúdo para português usando a mesma formatação usada em Roleplay.",
-        "user_content_prefix": "Conteúdo:\n```{}```"
+        "user_content_prefix": "Texto original:\n```{}```"
     },
     "options": {
         "unknown": "Desconhecido",
@@ -251,7 +251,7 @@
         "model_missing_selection": "was not selected!"
     },
     "llm_instructions": {
-        "translate_angle": "Translate also texts inside <...>.",
+        "translate_angle": " Translate also texts inside <...>. NEVER translate values inside {{}}; Maintain {{...}} untranslated.",
         "no_translate_angle": "Do not translate texts inside <>; Maintain <...> original. Do not translate texts inside {{}}; Maintain {{...}} original.",
         "translate_name": "Include names translation",
         "no_translate_name": "Do not translate the text: {}.",
