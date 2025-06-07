@@ -41,13 +41,19 @@ Requires ImageMagick to be installed and configure the PATH variable.
 To use the preset translator, first you need to follow these steps:
 
 **1.** Set up the SillyTavern folder (optional) or use custom folder **(IMPORTANT!)**.
-\
-**2.** Set up the language the preset will be translated to and there is an optional box to select if want to translate content inside <>.
+
+**2.** If you want to use LLM to translate: mark the checkbox `Translate using LLM`.
+* Select your provider (Currently only supports openrouter/groq) and insert the API Key and model name from the provider. **(IMPORTANT!)**.
+
+
+**3.** Select the language that will translate the preset.
+
+* There is an optional box to select if want to translate content inside <>:
 * **Translate wrapped `<>`**: this one is experimental, you can translate any content inside <>, for example, `<think>` can be translated to `<考える>`
 
-**3.** Select the .JSON files to be translated.
+**4.** Select the .JSON files to be translated.
 \
-**4.** Name the file and save it.
+**5.** Name the file (if not saving in SillyTavern folder) and save it.
 
 ### Card translator
 To use the card translator, first you need to follow these steps:
