@@ -736,7 +736,7 @@ class TranslatorApp:
         """Sets up the user interface."""
         self.root.title(self._get_ui_text("window_title"))
         self.root.geometry("900x450") # Increased height for LLM options
-
+        self.root.minsize(800, 400)  # Set a minimum window size for better layout
         main_frame = ttk.Frame(self.root, padding="15")
         main_frame.pack(fill=tk.BOTH, expand=True)
         main_frame.columnconfigure(0, weight=1) # Make list expand horizontally
@@ -871,8 +871,8 @@ class TranslatorApp:
             "llm_provider_label": provider_frame.winfo_children()[0], # New
             # Radio button text ("OpenRouter", "Groq") is static
             # Labels for API keys/models are static
-            "select_files": main_frame.grid_slaves(row=2, column=0)[0], # Get label by grid position
-            "select_files": self.select_button,
+            "select_files_label": main_frame.grid_slaves(row=2, column=0)[0], # Get label by grid position
+            "select_files_button": self.select_button,
             "remove_button": self.remove_button,
             "start_translation": self.translate_button,
         }
@@ -880,7 +880,7 @@ class TranslatorApp:
         # Initial UI state based on config
         self._toggle_llm_options()
 
-    def update_language(self):
+    def update_language(self, *args):
         """Updates the UI language based on selection."""
         selected_lang_name = self.lang_combobox.get()
         lang_code = self.config.get_lang_code(selected_lang_name)
@@ -890,12 +890,12 @@ class TranslatorApp:
             self.config.save()
             self.reload_ui_text() # Update text on existing widgets
 
-    def save_angle_preference(self): # Added *args to handle potential trace callback args
+    def save_angle_preference(self, *args): # Added *args to handle potential trace callback args
         """Saves the preference for translating angle brackets."""
         self.config.data["translate_angle"] = self.translate_angle_var.get()
         self.config.save()
 
-    def save_location_preference(self): # Added *args to handle potential trace callback args
+    def save_location_preference(self, *args): # Added *args to handle potential trace callback args
         """Saves the preferred save location."""
         self.config.data["save_location"] = self.save_location_var.get()
         self.config.save()
