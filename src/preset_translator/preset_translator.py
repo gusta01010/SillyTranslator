@@ -689,7 +689,7 @@ class TranslatorApp:
         """Shows/hides LLM provider selection and input fields."""
         show_llm = self.use_llm_var.get()
         if show_llm:
-            self.llm_options_frame.grid(row=1, column=0, columnspan=2, sticky='ew', pady=(5, 5), padx=5)
+            self.llm_options_frame.grid(row=2, column=0, columnspan=2, sticky='ew', pady=(5, 5), padx=5)
             self._toggle_provider_fields() # Show fields for the currently selected provider
         else:
             self.llm_options_frame.grid_remove()
@@ -736,7 +736,7 @@ class TranslatorApp:
         """Sets up the user interface."""
         self.root.title(self._get_ui_text("window_title"))
         self.root.geometry("900x450") # Increased height for LLM options
-        self.root.minsize(800, 400)  # Set a minimum window size for better layout
+        
         main_frame = ttk.Frame(self.root, padding="15")
         main_frame.pack(fill=tk.BOTH, expand=True)
         main_frame.columnconfigure(0, weight=1) # Make list expand horizontally
@@ -871,8 +871,8 @@ class TranslatorApp:
             "llm_provider_label": provider_frame.winfo_children()[0], # New
             # Radio button text ("OpenRouter", "Groq") is static
             # Labels for API keys/models are static
-            "select_files_label": main_frame.grid_slaves(row=2, column=0)[0], # Get label by grid position
-            "select_files_button": self.select_button,
+            "select_files": main_frame.grid_slaves(row=2, column=0)[0], # Get label by grid position
+            "select_files": self.select_button,
             "remove_button": self.remove_button,
             "start_translation": self.translate_button,
         }
@@ -904,7 +904,7 @@ class TranslatorApp:
         """Gets the SillyTavern OpenAI Settings path, prompting if needed."""
         st_path = self.config.data.get("silly_tavern_path")
         if not st_path or not os.path.isdir(st_path):
-             messagebox.showinfo(self._get_ui_text("info_title"), self._get_ui_text("ask_silly_path_msg"))
+             messagebox.showinfo(self._get_ui_text("sillytavern_path_not_set_title"), self._get_ui_text("sillytavern_path_not_set_message"))
              st_path = filedialog.askdirectory(title=self._get_ui_text("select_silly_dir"))
              if not st_path: return None # User cancelled
              self.config.data["silly_tavern_path"] = st_path
@@ -1000,15 +1000,21 @@ class TranslatorApp:
         """Starts the translation process in a separate thread."""
         selected_files = self.file_list.get(0, tk.END)
         if not selected_files:
-            messagebox.showwarning(self._get_ui_text("warning_title"), self._get_ui_text("no_files_selected_msg"))
+            messagebox.showwarning(self._get_ui_text("warning_title"), self._get_ui_text("no_files_selected_message"))
             return
 
-        # --- Save Location Handling (Keep existing) ---
         save_location = self.save_location_var.get()
         silly_settings_path = None
+        custom_save_dir = None
+
         if save_location == "silly":
             silly_settings_path = self.get_silly_openai_settings_path()
             if not silly_settings_path: return
+        elif save_location == "custom": 
+            custom_save_dir = filedialog.askdirectory(title="Select Custom Folder to Save Translated Files")
+            if not custom_save_dir:
+                messagebox.showwarning("Operation Cancelled", "No custom folder was selected. Translation cancelled.")
+                return
 
         # --- Target Language (Keep existing) ---
         target_lang_name = self.lang_combobox.get() # Native name
@@ -1019,13 +1025,11 @@ class TranslatorApp:
 
         translate_angle = self.translate_angle_var.get()
 
-        # --- LLM Configuration ---
+        # --- LLM Configuration (Keep existing) ---
         use_llm = self.use_llm_var.get()
         llm_config = None
         if use_llm:
-             # Save current values just before starting
-             self.config.save()
-             # Retrieve validated details
+             # ... (existing LLM config logic remains the same) ...
              provider = self.config.data.get('llm_provider')
              api_key = ""
              model = ""
@@ -1036,24 +1040,20 @@ class TranslatorApp:
                  api_key = self.config.data.get('groq_api_key')
                  model = self.config.data.get('groq_model')
 
-             # Validate API Key and Model presence
              if not api_key or not model:
                   messagebox.showerror(
-                      self._get_ui_text("error_title"),
-                      self._get_ui_text("llm_missing_credentials_msg").format(provider.capitalize())
+                      self._get_ui_text("llm_translation_error_title"),
+                      self._get_ui_text("llm_config_missing_message")
                   )
-                  return # Stop if key or model is missing
+                  return
 
              llm_config = {
                  "provider": provider,
                  "api_key": api_key,
                  "model": model,
              }
-             print(f"Using LLM Translation via {provider.capitalize()} (Model: {model})") # Info
-        else:
-             print("Using Google Translate") # Info
 
-        # --- Start Thread ---
+        # --- Start Thread (MODIFIED) ---
         self.set_ui_state(False)
         self.progress_bar['value'] = 0
         self.status_label.config(text=self._get_ui_text("status_starting"))
@@ -1061,9 +1061,9 @@ class TranslatorApp:
         thread = threading.Thread(
             target=self._translation_thread_func,
             args=(
-                selected_files, target_lang_code, target_lang_name, # Pass code and name
+                selected_files, target_lang_code, target_lang_name,
                 translate_angle, save_location, silly_settings_path,
-                use_llm, llm_config # Pass LLM flags
+                use_llm, llm_config, custom_save_dir
             ),
             daemon=True
         )
@@ -1084,7 +1084,7 @@ class TranslatorApp:
 
 
     # Modify _translation_thread_func to accept and pass LLM args
-    def _translation_thread_func(self, files, target_lang_code, target_lang_name, translate_angle, save_location, silly_path, use_llm, llm_config):
+    def _translation_thread_func(self, files, target_lang_code, target_lang_name, translate_angle, save_location, silly_path, use_llm, llm_config, custom_save_dir):
         """Worker thread function for translation."""
         total_files = len(files)
         current_file_path = "N/A" # Keep track for error message
@@ -1114,16 +1114,21 @@ class TranslatorApp:
                     progress_callback, use_llm=use_llm, llm_config=llm_config
                 )
 
-                # --- Save Path Determination (Keep existing) ---
                 save_path = None
-                if save_location == "custom":
-                    base, ext = os.path.splitext(file_path)
-                    # Add language code to filename for clarity
-                    save_path = f"{base}_translated_{target_lang_code}{ext}"
+                # First, get just the filename from the full path
+                filename = os.path.basename(file_path)
+                # Then, split the filename into its base and extension
+                base, ext = os.path.splitext(filename)
+                # Create the new filename
+                new_filename = f"{base}_translated_{target_lang_code}{ext}"
+
+                if save_location == "custom" and custom_save_dir:
+                    # Join the selected custom directory with the new filename
+                    save_path = os.path.join(custom_save_dir, new_filename)
                     print(f"Custom save: saving to {save_path}")
                 elif save_location == "silly" and silly_path:
-                    base, ext = os.path.splitext(filename)
-                    save_path = os.path.join(silly_path, f"{base}_translated_{target_lang_code}{ext}")
+                    # Join the sillytavern path with the new filename
+                    save_path = os.path.join(silly_path, new_filename)
 
                 # --- Save Translated File (Keep existing) ---
                 if save_path:
