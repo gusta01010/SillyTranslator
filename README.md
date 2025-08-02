@@ -86,7 +86,7 @@ LLMs
 LLMs
 * **USE_EN_INSTRUCT**
 * Disabled: Sends as the targeted language prompt to AI to translate. **Recommended**
-* Enabled: Sends the prompt in English to AI translate. **Experiental**
+* Enabled: Sends the prompt in English to AI translate. **Experimental**
   
 **5.** Enable monitoring.
 
