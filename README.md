@@ -31,9 +31,10 @@ SillyTranslator is a collection of two tools available to download, containing t
   * 🇪🇸 Spanish
 
 ## Requirements
-* ImageMagick:
+* ~~ImageMagick:~~
 
-Requires ImageMagick to be installed and configure the PATH variable.
+~~Requires ImageMagick to be installed and configure the PATH variable.--~~
+ImageMagick installation is not necessary anymore, just have the `requirements.txt` packages listed there
 
 ## Usage
 
@@ -54,7 +55,8 @@ To use the preset translator, first you need to follow these steps:
 * **Translate wrapped `<>`**: this one is experimental, you can translate any content inside <>, for example, `<think>` can be translated to `<考える>`
 
 **4.** Select the .JSON files to be translated.
-\
+
+
 **5.** Name the file (if not saving in SillyTavern folder) and save it.
 
 ### Card translator
@@ -62,35 +64,30 @@ To use the card translator, first you need to follow these steps:
 
 **0.** Run `card_translator.py`.
 
-**1.** Set up your interface language.\
-**2.** Select the SillyTavern folder **(IMPORTANT!)**.\
-**3.** Set up the translator.\
+**1.** Select the SillyTavern folder in `3. Configure Settings` **(IMPORTANT!)**.
+
+**2.** Set up the translator.\
 Setting up the translator is important, customizations for Non-LLMs and LLMs:
 
-Non-LLMs
+Google Translate
 * **Translate name**: you can translate, the character card name from, for example, `James` (en) to `ジェームズ` (ja) if the option is enabled.
-* **Translate wrapped `<>`**: this one is experimental, you can translate any content inside <>, for example, `<think>` can be translated to `<考える>`
-* **Translate wrapped `()`**: translates content inside parentheses separated from the rest of the text
-* **Translate wrapped `[]`**: translates content inside brackets separated from the rest of the text
-* **Use Jane (placeholder) instead of {{char}} during translation**: Enabling placeholder may improve translation coherence and returns back to {{char}} after the translation is done
+* **Translate alternate greetings**: you can disable or enable the translation of alternate greetings.
+* **Use character's name instead of {{char}} during translation**: Enabling the character's may improve translation coherence
 
 
 LLMs
 * **Translate name**: you can translate, the character card name from, for example, `James` (en) to `ジェームズ` (ja) if the option is enabled.
-* **Translate wrapped `<>`**: this one is experimental, you can translate any content inside <>, for example, `<think>` can be translated to `<考える>`
-* **Use characters's name instead of {{char}}**: may improve coherence, uses character's name to translate and after translation goes back to {{char}}
-* **Select character's gender**: optional, may improve coherence with pronouns
+* **Translate alternate greetings**: you can disable or enable the translation of alternate greetings.
+* **Use character's name instead of {{char}} during translation**: Enabling the character's may improve translation coherence
   
 
-**4.** For Non-LLMs: Select the translation service. OR for LLMs: Select the model and insert the API key
-LLMs
-* **USE_EN_INSTRUCT**
-* Disabled: Sends as the targeted language prompt to AI to translate. **Recommended**
-* Enabled: Sends the prompt in English to AI translate. **Experimental**
+**3.** For Non-LLMs: Select the translation service.
+
+**4.** For LLMs: Select the provider, model and insert the API key
   
 **5.** Enable monitoring.
 
-After enabling the monitoring, it will scan any file inside SillyTavern's character folder to translate, backing up the original file in `Original` folder where the tool is localted, if you want to restore the original files you can press the number `3` in your keyboard and it will restore the files. **The restored original files will not be translated until the second option, `2` is selected, to clean all the translated files status.**
+After enabling the monitoring, it will scan any file inside SillyTavern's character folder to translate, backing up the original file in `Original` folder where the tool is located, if you want to restore the original files you can press the number `4` in your keyboard and it will restore the files. **The restored original files will not be translated until the fifth option, `5` is selected, to clean all the translated files status.**
 
 ## Contributing
 
