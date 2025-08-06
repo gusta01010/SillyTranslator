@@ -699,8 +699,8 @@ def configure_settings(processor: CharacterProcessor):
                     print(f"{Fore.RED}Directory not found!{Style.RESET_ALL}")
                 
         elif choice == "2":
-            langs = {"1": "pt-BR", "2": "en-US", "3": "es-US", "4": "fr-FR", "5": "de-DE", "6": "ja-JP", "7": "zh-CN"}
-            print("Languages: 1=Portuguese, 2=English, 3=Spanish, 4=French, 5=German, 6=Japanese, 7=Chinese")
+            langs = {"1": "pt-BR", "2": "en-US", "3": "es-US", "4": "fr-FR", "5": "it-IT", "6": "de-DE", "7": "ja-JP", "8": "zh-CN", "9": "ru-RU", "10": "ko-KR"}
+            print("Languages: 1=Portuguese, 2=English, 3=Spanish, 4=French, 5=Italian, 6=German, 7=Japanese, 8=Chinese, 9=Russian, 10=Korean")
             lang_choice = input("Choose language: ").strip()
             if lang_choice in langs:
                 processor.config.target_lang = langs[lang_choice]
