@@ -142,8 +142,8 @@ class LLMTranslator(Translator):
             return text
             
         prompt = f"""Translate the following text to {target_lang}. 
-        Preserve formatting, keep {{{{char}}}} and {{{{user}}}} unchanged.
-        Do not translate content inside <> brackets.
+        Preserve formatting, keep {{{{char}}}} and {{{{user}}}} unchanged, respecting their original genders.
+        Do not translate content inside <> or {{}} brackets.
         
         Text: {text}"""
         
@@ -278,7 +278,7 @@ class CharacterProcessor:
         
         return None
     
-    def translate_text(self, text: str, char_name: Optional[str] = None) -> str:
+    def translate_text(self, text: str, char_name: Optional[str] = None, field_name: Optional[str] = None) -> str:
         """Translate text while preserving formatting"""
         if not text or not isinstance(text, str):
             return text
@@ -292,6 +292,13 @@ class CharacterProcessor:
         if char_name and self.config.use_char_name:
             text = text.replace('{{char}}', char_name)
         
+        # Add special instruction for mes_example
+        if field_name == 'mes_example':
+            text = """IMPORTANT INSTRUCTIONS:
+    1. Before each dialogue example, add the <START> tag in plain english  on its own line
+    2. Preserve all formatting and line breaks
+    The blocks of example dialogue need <START> tags"""
+        
         # Translate
         translated = self.translator.translate(text, self.config.target_lang)
         
@@ -301,9 +308,16 @@ class CharacterProcessor:
         
         return translated if translated != original_text else original_text
     
+    def fields_are_identical(self, field1: str, field2: str) -> bool:
+        """Check if two fields contain identical content (ignoring whitespace)"""
+        if not field1 or not field2:
+            return False
+        return field1.strip() == field2.strip()
+    
     def translate_character_data(self, data: Dict, char_name: Optional[str] = None) -> Dict:
-        """Translate character data fields according to chara_card_v2 structure"""
+        """Translate character data fields with duplicate detection"""
         # Create a deep copy to avoid modifying original
+        original_data = json.loads(json.dumps(data))  # Keep original for comparison
         translated_data = json.loads(json.dumps(data))
         
         # Main translatable fields at root level
@@ -311,20 +325,49 @@ class CharacterProcessor:
             'description', 'personality', 'scenario', 'first_mes', 'mes_example'
         ]
         
-        # Translate root level fields
+        # Check if we have both root and data fields
+        has_data_object = 'data' in translated_data and isinstance(translated_data['data'], dict)
+        
+        # Dictionary to store translations to avoid duplicate work
+        translation_cache = {}
+        
+        # Translate root level fields first
         for field in root_translatable_fields:
             if field in translated_data and isinstance(translated_data[field], str) and translated_data[field].strip():
                 print(f"  Translating {field}...")
-                translated_data[field] = self.translate_text(translated_data[field], char_name)
+                translated_text = self.translate_text(translated_data[field], char_name)
+                translated_data[field] = translated_text
+                # Cache the translation using original text as key
+                translation_cache[original_data[field]] = translated_text
         
         # Translate name if enabled
         if self.config.translate_names and 'name' in translated_data and translated_data['name'].strip():
             print(f"  Translating name...")
-            translated_data['name'] = self.translate_text(translated_data['name'])
+            translated_name = self.translate_text(translated_data['name'])
+            translated_data['name'] = translated_name
+            translation_cache[original_data.get('name', '')] = translated_name
         
-        # Handle the nested 'data' object (chara_card_v2 structure)
-        if 'data' in translated_data and isinstance(translated_data['data'], dict):
+        # Handle alternate greetings at root level
+        if self.config.translate_greetings and 'alternate_greetings' in translated_data and isinstance(translated_data['alternate_greetings'], list):
+            print(f"  Translating {len(translated_data['alternate_greetings'])} root alternate greetings...")
+            translated_greetings = []
+            for i, greeting in enumerate(translated_data['alternate_greetings']):
+                if isinstance(greeting, str) and greeting.strip():
+                    # Check cache first
+                    if greeting in translation_cache:
+                        translated_greetings.append(translation_cache[greeting])
+                    else:
+                        translated_greeting = self.translate_text(greeting, char_name)
+                        translated_greetings.append(translated_greeting)
+                        translation_cache[greeting] = translated_greeting
+                else:
+                    translated_greetings.append(greeting)
+            translated_data['alternate_greetings'] = translated_greetings
+        
+        # Handle the nested 'data' object with duplicate detection
+        if has_data_object:
             data_obj = translated_data['data']
+            original_data_obj = original_data['data']
             
             # Translatable fields in data object
             data_translatable_fields = [
@@ -332,28 +375,73 @@ class CharacterProcessor:
                 'creator_notes', 'system_prompt', 'post_history_instructions'
             ]
             
-            # Translate data object fields
+            # Translate data object fields, checking for duplicates
             for field in data_translatable_fields:
                 if field in data_obj and isinstance(data_obj[field], str) and data_obj[field].strip():
-                    print(f"  Translating data.{field}...")
-                    data_obj[field] = self.translate_text(data_obj[field], char_name)
-            
-            # Translate data.name if enabled
-            if self.config.translate_names and 'name' in data_obj and data_obj['name'].strip():
-                print(f"  Translating data.name...")
-                data_obj['name'] = self.translate_text(data_obj['name'])
-            
-            if self.config.translate_greetings and 'alternate_greetings' in data_obj and isinstance(data_obj['alternate_greetings'], list):
-                print(f"  Translating {len(data_obj['alternate_greetings'])} alternate greetings...")
-                translated_greetings = []
-                for i, greeting in enumerate(data_obj['alternate_greetings']):
-                    if isinstance(greeting, str) and greeting.strip():
-                        translated_greetings.append(self.translate_text(greeting, char_name))
+                    # Check if this field is identical to ORIGINAL root field
+                    original_root_value = original_data.get(field, '')
+                    original_data_value = original_data_obj.get(field, '')
+                    
+                    if self.fields_are_identical(original_root_value, original_data_value):
+                        # Copy the already translated root field
+                        #print(f"  Copying translated {field} from root to data...")
+                        data_obj[field] = translated_data[field]
                     else:
-                        translated_greetings.append(greeting)
-                data_obj['alternate_greetings'] = translated_greetings
+                        # Check translation cache
+                        if original_data_value in translation_cache:
+                            print(f"  Using cached translation for data.{field}...")
+                            data_obj[field] = translation_cache[original_data_value]
+                        else:
+                            # Translate separately
+                            print(f"  Translating data.{field}...")
+                            translated_text = self.translate_text(data_obj[field], char_name)
+                            data_obj[field] = translated_text
+                            translation_cache[original_data_value] = translated_text
             
-            # Handle extensions.depth_prompt.prompt if it exists
+            # Handle data.name with duplicate detection
+            if self.config.translate_names and 'name' in data_obj and data_obj['name'].strip():
+                original_root_name = original_data.get('name', '')
+                original_data_name = original_data_obj.get('name', '')
+                
+                if self.fields_are_identical(original_root_name, original_data_name):
+                    print(f"  Copying translated name from root to data...")
+                    data_obj['name'] = translated_data['name']
+                else:
+                    if original_data_name in translation_cache:
+                        data_obj['name'] = translation_cache[original_data_name]
+                    else:
+                        print(f"  Translating data.name...")
+                        translated_name = self.translate_text(data_obj['name'])
+                        data_obj['name'] = translated_name
+                        translation_cache[original_data_name] = translated_name
+            
+            # Handle data.alternate_greetings with duplicate detection
+            if self.config.translate_greetings and 'alternate_greetings' in data_obj and isinstance(data_obj['alternate_greetings'], list):
+                original_root_greetings = original_data.get('alternate_greetings', [])
+                original_data_greetings = original_data_obj.get('alternate_greetings', [])
+                
+                # Check if greetings arrays are identical
+                if (isinstance(original_root_greetings, list) and 
+                    len(original_root_greetings) == len(original_data_greetings) and
+                    all(self.fields_are_identical(str(r), str(d)) for r, d in zip(original_root_greetings, original_data_greetings))):
+                    print(f"  Copying translated alternate greetings from root to data...")
+                    data_obj['alternate_greetings'] = translated_data['alternate_greetings']
+                else:
+                    print(f"  Translating {len(data_obj['alternate_greetings'])} data alternate greetings...")
+                    translated_greetings = []
+                    for greeting in data_obj['alternate_greetings']:
+                        if isinstance(greeting, str) and greeting.strip():
+                            if greeting in translation_cache:
+                                translated_greetings.append(translation_cache[greeting])
+                            else:
+                                translated_greeting = self.translate_text(greeting, char_name)
+                                translated_greetings.append(translated_greeting)
+                                translation_cache[greeting] = translated_greeting
+                        else:
+                            translated_greetings.append(greeting)
+                    data_obj['alternate_greetings'] = translated_greetings
+            
+            # Handle extensions.depth_prompt.prompt
             if ('extensions' in data_obj and 
                 isinstance(data_obj['extensions'], dict) and
                 'depth_prompt' in data_obj['extensions'] and
@@ -362,21 +450,16 @@ class CharacterProcessor:
                 
                 depth_prompt = data_obj['extensions']['depth_prompt']['prompt']
                 if isinstance(depth_prompt, str) and depth_prompt.strip():
-                    print(f"  Translating depth_prompt...")
-                    data_obj['extensions']['depth_prompt']['prompt'] = self.translate_text(depth_prompt, char_name)
-        
-        if self.config.translate_greetings and 'alternate_greetings' in translated_data and isinstance(translated_data['alternate_greetings'], list):
-            print(f"  Translating {len(translated_data['alternate_greetings'])} root alternate greetings...")
-            translated_greetings = []
-            for greeting in translated_data['alternate_greetings']:
-                if isinstance(greeting, str) and greeting.strip():
-                    translated_greetings.append(self.translate_text(greeting, char_name))
-                else:
-                    translated_greetings.append(greeting)
-            translated_data['alternate_greetings'] = translated_greetings
+                    if depth_prompt in translation_cache:
+                        data_obj['extensions']['depth_prompt']['prompt'] = translation_cache[depth_prompt]
+                    else:
+                        print(f"  Translating depth_prompt...")
+                        translated_prompt = self.translate_text(depth_prompt, char_name)
+                        data_obj['extensions']['depth_prompt']['prompt'] = translated_prompt
+                        translation_cache[depth_prompt] = translated_prompt
         
         return translated_data
-    
+        
     def save_translated_card(self, original_file: Path, translated_data: Dict):
         """Save translated card as PNG with metadata in chara_card_v2 format"""
         try:
@@ -401,11 +484,12 @@ class CharacterProcessor:
                 # Create new metadata
                 metadata = PngInfo()
                 metadata.add_text("chara", b64_data)
+                metadata.add_text("Ccv3", b64_data) 
                 
-                # Copy other existing metadata if present (except chara)
+                # Copy other existing metadata if present (except chara and Ccv3)
                 if hasattr(img, 'text'):
                     for key, value in img.text.items():
-                        if key != 'chara':  # Don't copy old chara data
+                        if key not in ['chara', 'Ccv3']:  # Don't copy old chara/Ccv3 data
                             metadata.add_text(key, value)
                 
                 # Save to characters directory
@@ -615,7 +699,7 @@ def configure_settings(processor: CharacterProcessor):
                     print(f"{Fore.RED}Directory not found!{Style.RESET_ALL}")
                 
         elif choice == "2":
-            langs = {"1": "pt", "2": "en", "3": "es", "4": "fr", "5": "de", "6": "ja", "7": "zh-cn"}
+            langs = {"1": "portuguese brazil", "2": "en", "3": "es", "4": "fr", "5": "de", "6": "ja", "7": "zh-cn"}
             print("Languages: 1=Portuguese, 2=English, 3=Spanish, 4=French, 5=German, 6=Japanese, 7=Chinese")
             lang_choice = input("Choose language: ").strip()
             if lang_choice in langs:
@@ -746,10 +830,14 @@ def main():
             count = 0
             for backup_file in processor.original_dir.glob('*.png'):
                 target_file = Path(processor.config.characters_dir) / backup_file.name
-                os.rename(backup_file, target_file)
-                count += 1
+                try:
+                    # os.replace() will overwrite existing files
+                    os.replace(backup_file, target_file)
+                    count += 1
+                except Exception as e:
+                    print(f"{Fore.RED}Error restoring {backup_file.name}: {e}{Style.RESET_ALL}")
             print(f"{Fore.GREEN}Restored {count} original files{Style.RESET_ALL}")
-            
+                    
         elif choice == "5":
             processor.db.clear()
             processor.save_db()
