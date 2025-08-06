@@ -40,6 +40,8 @@ Requires ImageMagick to be installed and configure the PATH variable.
 ### Preset translator
 To use the preset translator, first you need to follow these steps:
 
+**0.** Run `preset_translator.py`.
+
 **1.** Set up the SillyTavern folder (optional) or use custom folder **(IMPORTANT!)**.
 
 **2.** If you want to use LLM to translate: mark the checkbox `Translate using LLM`.
@@ -57,6 +59,8 @@ To use the preset translator, first you need to follow these steps:
 
 ### Card translator
 To use the card translator, first you need to follow these steps:
+
+**0.** Run `card_translator.py`.
 
 **1.** Set up your interface language.\
 **2.** Select the SillyTavern folder **(IMPORTANT!)**.\
@@ -82,7 +86,7 @@ LLMs
 LLMs
 * **USE_EN_INSTRUCT**
 * Disabled: Sends as the targeted language prompt to AI to translate. **Recommended**
-* Enabled: Sends the prompt in English to AI translate. **Experiental**
+* Enabled: Sends the prompt in English to AI translate. **Experimental**
   
 **5.** Enable monitoring.
 
