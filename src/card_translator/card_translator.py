@@ -662,7 +662,7 @@ def configure_settings(processor: CharacterProcessor):
         print(f"2. Target Language: {processor.config.target_lang}")
         print(f"3. Translation Service: {processor.config.service}")
         print(f"4. Translate Names: {processor.config.translate_names}")
-        print(f"5. Translate Greetings: {processor.config.translate_greetings}")
+        print(f"5. Translate Alternate Greetings: {processor.config.translate_greetings}")
         print(f"6. Use Character Name: {processor.config.use_char_name}")
         if processor.config.service == "llm":
             print(f"7. API Provider: {processor.config.provider}")
@@ -699,7 +699,7 @@ def configure_settings(processor: CharacterProcessor):
                     print(f"{Fore.RED}Directory not found!{Style.RESET_ALL}")
                 
         elif choice == "2":
-            langs = {"1": "portuguese brazil", "2": "en", "3": "es", "4": "fr", "5": "de", "6": "ja", "7": "zh-cn"}
+            langs = {"1": "pt-BR", "2": "en-US", "3": "es-US", "4": "fr-FR", "5": "de-DE", "6": "ja-JP", "7": "zh-CN"}
             print("Languages: 1=Portuguese, 2=English, 3=Spanish, 4=French, 5=German, 6=Japanese, 7=Chinese")
             lang_choice = input("Choose language: ").strip()
             if lang_choice in langs:
@@ -824,7 +824,7 @@ def main():
             
         elif choice == "3":
             configure_settings(processor)
-            
+
         elif choice == "4":
             # Restore originals
             count = 0
