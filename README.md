@@ -38,7 +38,6 @@ SillyTranslator is a collection of two tools available to download, containing t
 
 ~~Requires ImageMagick to be installed and configure the PATH variable.--~~
 ImageMagick installation is not necessary anymore, just have the `requirements.txt` packages listed there
-**Make sure to have the latest Microsoft Edge WebDriver (msedgedriver.exe)**
 
 ## Usage
 
