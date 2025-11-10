@@ -142,10 +142,10 @@ class LLMTranslator(Translator):
             return text
             
         prompt = f"""Translate the following text to {target_lang}. 
-        Preserve formatting, keep {{{{char}}}} and {{{{user}}}} unchanged, respecting their original genders.
-        Do not translate content inside <> or {{}} brackets.
+        Preserve formatting, keep {{{{char}}}} and {{{{user}}}} unchanged, respecting their respective genders.
+        Do not translate content inside <> or {{}} brackets. Translate the content below and output only the desired translated result according to the rules, without any kind of additional comment:
         
-        Text: {text}"""
+        {text}"""
         
         try:
             if self.provider == "groq":
@@ -295,9 +295,12 @@ class CharacterProcessor:
         # Add special instruction for mes_example
         if field_name == 'mes_example':
             text = """IMPORTANT INSTRUCTIONS:
-    1. Before each dialogue example, add the <START> tag in plain english  on its own line
-    2. Preserve all formatting and line breaks
-    The blocks of example dialogue need <START> tags"""
+    1. Before each dialogue example, add the <START> tag in plain english  on its own line if it does not exist yet, example:
+    <START>
+    {{user}}:..
+    {{char}}:..
+    ...
+    2. Preserve all markdown formatting"""
         
         # Translate
         translated = self.translator.translate(text, self.config.target_lang)
@@ -737,7 +740,7 @@ def configure_settings(processor: CharacterProcessor):
                 
         elif choice == "8" and processor.config.service == "llm":
             if processor.config.provider == "groq":
-                models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "gemma2-9b-it"]
+                models = ["meta-llama/llama-4-scout-17b-16e-instruct", "openai/gpt-oss-20b", "meta-llama/llama-4-maverick-17b-128e-instruct"]
             else:
                 models = ["google/gemini-2.0-pro-exp-02-05:free", "microsoft/phi-3-mini-128k-instruct:free"]
             
