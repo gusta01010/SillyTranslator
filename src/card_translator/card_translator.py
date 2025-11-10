@@ -143,7 +143,7 @@ class LLMTranslator(Translator):
             
         prompt = f"""Translate the following text to {target_lang}. 
         Preserve formatting, keep {{{{char}}}} and {{{{user}}}} unchanged, respecting their respective genders.
-        Do not translate content inside <> or {{}} brackets. Translate the content below and output only the desired translated result according to the rules, without any kind of additional comment:
+        Do not translate any content inside <> or {{{{}}}} brackets. Translate the content below and output only the desired translated result according to the rules, without any kind of additional comment:
         
         {text}"""
         
