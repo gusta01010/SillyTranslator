@@ -11,12 +11,15 @@ SillyTranslator translates SillyTavern presets and character cards metadata auto
 SillyTranslator is a collection of two tools available to download, containing two utilities:
 
 1. **Preset translator script**
-2. **Card monitoring script**
+    - Translates .json presets automatically and saves them in the specified location.
+
+2. **Card translator script**
+    - Monitors the SillyTavern's  `characters` folder for character cards, translates and saves them in the `characters` folder.
 
 ## Key Features
 
 *   **Basic Interface:** You have an easy way of setting up the tools mentioned above, having a simple terminal interface.
-*   **Automatic:** The tool translates presets and .png character cards automatically without having to replace manually descriptions, system messages, prefills and many more resources.
+*   **Automatic:** The tool translates presets and .png character cards automatically and saves them for you.
 
 * **Supported languages:** 
   * 🇷🇺 Russian
