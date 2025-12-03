@@ -142,7 +142,7 @@ class LLMTranslator(Translator):
             return text
             
         prompt = f"""Translate the following text to {target_lang}. 
-        Preserve formatting, keep {{{{char}}}} and {{{{user}}}} unchanged, respecting their respective genders.
+        Preserve formatting, keep {{{{char}}}} and {{{{user}}}} unchanged, respecting their respective genders, translate adaptability pronouns and even s-stuttering words.
         Do not translate any content inside <> or {{{{}}}} brackets. Translate the content below and output only the desired translated result according to the rules, without any kind of additional comment:
         
         {text}"""
