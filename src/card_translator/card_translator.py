@@ -4,6 +4,7 @@ import base64
 import hashlib
 import time
 import threading
+import shutil
 from pathlib import Path
 from typing import Dict, Any, Optional
 from dataclasses import dataclass, asdict
@@ -31,10 +32,11 @@ class Config:
     api_key: str = ""
     model: str = "llama-3.3-70b-versatile"
     provider: str = "groq"  # groq or openrouter
+    personas_translated: bool = False
 
 class Translator:
     """Base translator class"""
-    def translate(self, text: str, target_lang: str) -> str:
+    def translate(self, text: str, target_lang: str, extra_instructions: Optional[str] = None) -> str:
         raise NotImplementedError
 
 class GoogleTranslator(Translator):
@@ -61,7 +63,7 @@ class GoogleTranslator(Translator):
         asyncio.set_event_loop(self.loop)
         self.loop.run_forever()
     
-    def translate(self, text: str, target_lang: str) -> str:
+    def translate(self, text: str, target_lang: str, extra_instructions: Optional[str] = None) -> str:
         if not self.translator or not text or not text.strip() or not self.loop:
             return text
             
@@ -137,39 +139,55 @@ class LLMTranslator(Translator):
         self.provider = provider
         self.model = model
         
-    def translate(self, text: str, target_lang: str) -> str:
+    def translate(self, text: str, target_lang: str, extra_instructions: Optional[str] = None) -> str:
         if not self.api_key:
             return text
             
-        prompt = f"""Translate the following text to {target_lang}. 
-        Preserve formatting, keep {{{{char}}}} and {{{{user}}}} unchanged, respecting their respective genders, translate adaptability pronouns and even s-stuttering words.
-        Do not translate any content inside <> or {{{{}}}} brackets. Translate the content below and output only the desired translated result according to the rules, without any kind of additional comment:
+        system_prompt = f"""You are a professional translator specializing in roleplay character cards. 
+Your task is to translate provided text COMPLETELY from English to {target_lang}.
+
+### CRITICAL RULES:
+1. **Full Translation**: Translate EVERYTHING. Do not leave any English words or sentences in your response. Do not mix languages.
+2. **Handle Placeholders**: Keep {{{{char}}}}, {{{{user}}}}, and content inside < > or {{{{ }}}} exactly as they are. Do NOT translate them.
+3. **Preserve Format**: Maintain all Markdown (e.g., *italics*, **bold**), HTML tags, and line breaks exactly as in the original.
+4. **Gender Consistency**: Ensure grammatical gender (adjectives, pronouns) matches the context of {{{{char}}}} and {{{{user}}}}.
+5. **Natural Speech**: Adapt stuttering (e.g., "h-hello" -> "o-olá") and slang to sound natural in {target_lang}.
+6. **No Chatting**: Deliver ONLY the translated text. No preamble, no explanations, no "Translation:", no meta-commentary."""
+
+        if extra_instructions:
+            system_prompt += f"\n\n### EXTRA INSTRUCTIONS:\n{extra_instructions}"
+
+        user_content = f"### TEXT TO TRANSLATE (ENGLISH):\n{text}\n\n### TRANSLATION ({target_lang}):"
         
-        {text}"""
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content}
+        ]
         
         try:
             if self.provider == "groq":
-                return self._groq_translate(prompt)
+                return self._groq_translate(messages)
             elif self.provider == "openrouter":
-                return self._openrouter_translate(prompt)
+                return self._openrouter_translate(messages)
         except Exception as e:
             print(f"LLM translation error: {e}")
             return text
     
-    def _groq_translate(self, prompt: str) -> str:
+    def _groq_translate(self, messages: list) -> str:
         try:
             from groq import Groq
             client = Groq(api_key=self.api_key)
             response = client.chat.completions.create(
-                messages=[{"role": "user", "content": prompt}],
-                model=self.model
+                messages=messages,
+                model=self.model,
+                temperature=0.1
             )
             return response.choices[0].message.content
         except ImportError:
             print("Groq library not installed. Run: pip install groq")
             return ""
     
-    def _openrouter_translate(self, prompt: str) -> str:
+    def _openrouter_translate(self, messages: list) -> str:
         try:
             import openai
             client = openai.OpenAI(
@@ -178,7 +196,8 @@ class LLMTranslator(Translator):
             )
             response = client.chat.completions.create(
                 model=self.model,
-                messages=[{"role": "user", "content": prompt}]
+                messages=messages,
+                temperature=0.1
             )
             return response.choices[0].message.content
         except ImportError:
@@ -199,6 +218,20 @@ class CharacterProcessor:
         # Create necessary directories
         self.original_dir = Path("./Original")
         self.original_dir.mkdir(exist_ok=True)
+
+    @property
+    def settings_file(self) -> Optional[Path]:
+        """Get path to SillyTavern settings.json"""
+        if not self.config.characters_dir:
+            return None
+        
+        chars_path = Path(self.config.characters_dir)
+        # settings.json is usually one level up from characters directory (in default-user)
+        settings_path = chars_path.parent / "settings.json"
+        
+        if settings_path.exists():
+            return settings_path
+        return None
         
     def load_config(self) -> Config:
         """Load configuration from file"""
@@ -292,18 +325,13 @@ class CharacterProcessor:
         if char_name and self.config.use_char_name:
             text = text.replace('{{char}}', char_name)
         
+        extra_instructions = None
         # Add special instruction for mes_example
         if field_name == 'mes_example':
-            text = """IMPORTANT INSTRUCTIONS:
-    1. Before each dialogue example, add the <START> tag in plain english  on its own line if it does not exist yet, example:
-    <START>
-    {{user}}:..
-    {{char}}:..
-    ...
-    2. Preserve all markdown formatting"""
+            extra_instructions = "Before each dialogue example, add the <START> tag in plain English on its own line if it does not exist yet."
         
         # Translate
-        translated = self.translator.translate(text, self.config.target_lang)
+        translated = self.translator.translate(text, self.config.target_lang, extra_instructions)
         
         # Restore character placeholder
         if char_name and self.config.use_char_name:
@@ -338,7 +366,7 @@ class CharacterProcessor:
         for field in root_translatable_fields:
             if field in translated_data and isinstance(translated_data[field], str) and translated_data[field].strip():
                 print(f"  Translating {field}...")
-                translated_text = self.translate_text(translated_data[field], char_name)
+                translated_text = self.translate_text(translated_data[field], char_name, field)
                 translated_data[field] = translated_text
                 # Cache the translation using original text as key
                 translation_cache[original_data[field]] = translated_text
@@ -346,7 +374,7 @@ class CharacterProcessor:
         # Translate name if enabled
         if self.config.translate_names and 'name' in translated_data and translated_data['name'].strip():
             print(f"  Translating name...")
-            translated_name = self.translate_text(translated_data['name'])
+            translated_name = self.translate_text(translated_data['name'], field_name='name')
             translated_data['name'] = translated_name
             translation_cache[original_data.get('name', '')] = translated_name
         
@@ -360,7 +388,7 @@ class CharacterProcessor:
                     if greeting in translation_cache:
                         translated_greetings.append(translation_cache[greeting])
                     else:
-                        translated_greeting = self.translate_text(greeting, char_name)
+                        translated_greeting = self.translate_text(greeting, char_name, 'alternate_greetings')
                         translated_greetings.append(translated_greeting)
                         translation_cache[greeting] = translated_greeting
                 else:
@@ -397,7 +425,7 @@ class CharacterProcessor:
                         else:
                             # Translate separately
                             print(f"  Translating data.{field}...")
-                            translated_text = self.translate_text(data_obj[field], char_name)
+                            translated_text = self.translate_text(data_obj[field], char_name, field)
                             data_obj[field] = translated_text
                             translation_cache[original_data_value] = translated_text
             
@@ -414,7 +442,7 @@ class CharacterProcessor:
                         data_obj['name'] = translation_cache[original_data_name]
                     else:
                         print(f"  Translating data.name...")
-                        translated_name = self.translate_text(data_obj['name'])
+                        translated_name = self.translate_text(data_obj['name'], field_name='name')
                         data_obj['name'] = translated_name
                         translation_cache[original_data_name] = translated_name
             
@@ -437,7 +465,7 @@ class CharacterProcessor:
                             if greeting in translation_cache:
                                 translated_greetings.append(translation_cache[greeting])
                             else:
-                                translated_greeting = self.translate_text(greeting, char_name)
+                                translated_greeting = self.translate_text(greeting, char_name, 'alternate_greetings')
                                 translated_greetings.append(translated_greeting)
                                 translation_cache[greeting] = translated_greeting
                         else:
@@ -457,7 +485,7 @@ class CharacterProcessor:
                         data_obj['extensions']['depth_prompt']['prompt'] = translation_cache[depth_prompt]
                     else:
                         print(f"  Translating depth_prompt...")
-                        translated_prompt = self.translate_text(depth_prompt, char_name)
+                        translated_prompt = self.translate_text(depth_prompt, char_name, 'depth_prompt')
                         data_obj['extensions']['depth_prompt']['prompt'] = translated_prompt
                         translation_cache[depth_prompt] = translated_prompt
         
@@ -585,6 +613,71 @@ class CharacterProcessor:
         
         print(f"{Fore.GREEN}✅ Completed processing {processed}/{len(files_to_process)} files{Style.RESET_ALL}")
 
+    def translate_personas(self):
+        """Translate character personas in settings.json"""
+        settings_path = self.settings_file
+        if not settings_path:
+            print(f"{Fore.RED}❌ settings.json not found!{Style.RESET_ALL}")
+            return
+
+        # Create backup if it doesn't exist
+        backup_path = settings_path.with_suffix('.json.bak')
+        if not backup_path.exists():
+            print(f"{Fore.CYAN}📦 Creating backup of settings.json...{Style.RESET_ALL}")
+            shutil.copy2(settings_path, backup_path)
+
+        try:
+            with open(settings_path, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+
+            if 'power_user' not in settings or 'persona_descriptions' not in settings['power_user']:
+                print(f"{Fore.YELLOW}⚠️ No personas found in settings.json{Style.RESET_ALL}")
+                return
+
+            personas = settings['power_user']['persona_descriptions']
+            total = len(personas)
+            print(f"{Fore.BLUE}🔄 Translating {total} personas...{Style.RESET_ALL}")
+
+            for i, (persona_id, persona_data) in enumerate(personas.items(), 1):
+                if 'description' in persona_data and isinstance(persona_data['description'], str):
+                    original_desc = persona_data['description']
+                    if original_desc.strip():
+                        print(f"  [{i}/{total}] Translating persona: {persona_id}")
+                        translated_desc = self.translate_text(original_desc)
+                        persona_data['description'] = translated_desc
+
+            with open(settings_path, 'w', encoding='utf-8') as f:
+                json.dump(settings, f, indent=4, ensure_ascii=False)
+
+            self.config.personas_translated = True
+            self.save_config()
+            print(f"{Fore.GREEN}✅ Personas translated successfully!{Style.RESET_ALL}")
+
+        except Exception as e:
+            print(f"{Fore.RED}❌ Error translating personas: {e}{Style.RESET_ALL}")
+
+    def restore_personas(self):
+        """Restore original personas from backup"""
+        settings_path = self.settings_file
+        if not settings_path:
+            print(f"{Fore.RED}❌ settings.json not found!{Style.RESET_ALL}")
+            return
+
+        backup_path = settings_path.with_suffix('.json.bak')
+        if not backup_path.exists():
+            print(f"{Fore.RED}❌ Backup file (settings.json.bak) not found!{Style.RESET_ALL}")
+            return
+
+        try:
+            print(f"{Fore.CYAN}⏪ Restoring settings.json from backup...{Style.RESET_ALL}")
+            shutil.copy2(backup_path, settings_path)
+            
+            self.config.personas_translated = False
+            self.save_config()
+            print(f"{Fore.GREEN}✅ Personas restored successfully!{Style.RESET_ALL}")
+        except Exception as e:
+            print(f"{Fore.RED}❌ Error restoring personas: {e}{Style.RESET_ALL}")
+
 class FileHandler(FileSystemEventHandler):
     """File system event handler"""
     
@@ -655,7 +748,8 @@ def show_current_status(processor: CharacterProcessor):
     
     # Database status
     db_count = len(processor.db)
-    print(f"📊 Processed: {db_count} files")
+    persona_status = f" | Personas translated? {Fore.GREEN if processor.config.personas_translated else Fore.RED}{processor.config.personas_translated}{Style.RESET_ALL}"
+    print(f"📊 Processed: {db_count} files{persona_status}")
 
 def configure_settings(processor: CharacterProcessor):
     """Interactive configuration menu"""
@@ -778,16 +872,18 @@ def main():
         
         print(f"\n{Fore.BLUE}=== Main Menu ==={Style.RESET_ALL}")
         print("1. Start Monitoring")
-        print("2. Process Existing Files")
+        print("2. Translate Personas")
+        print("3. Process Existing Files")
 
         if dir_not_set:
-            print(f"{Fore.RED}3. Configure Settings{Style.RESET_ALL}")
+            print(f"{Fore.RED}4. Configure Settings{Style.RESET_ALL}")
         else:
-            print("3. Configure Settings")
+            print("4. Configure Settings")
 
-        print("4. Restore Originals")
-        print("5. Clear Database")
-        print("6. Exit")
+        print("5. Restore Originals (Personas)")
+        print("6. Restore Originals")
+        print("7. Clear Database")
+        print("8. Exit")
         
         choice = input(f"\n{Fore.GREEN}Choose option: {Style.RESET_ALL}").strip()
         
@@ -823,12 +919,18 @@ def main():
             observer.join()
             
         elif choice == "2":
+            processor.translate_personas()
+
+        elif choice == "3":
             processor.process_existing_files()
             
-        elif choice == "3":
+        elif choice == "4":
             configure_settings(processor)
 
-        elif choice == "4":
+        elif choice == "5":
+            processor.restore_personas()
+
+        elif choice == "6":
             # Restore originals
             count = 0
             for backup_file in processor.original_dir.glob('*.png'):
@@ -841,12 +943,12 @@ def main():
                     print(f"{Fore.RED}Error restoring {backup_file.name}: {e}{Style.RESET_ALL}")
             print(f"{Fore.GREEN}Restored {count} original files{Style.RESET_ALL}")
                     
-        elif choice == "5":
+        elif choice == "7":
             processor.db.clear()
             processor.save_db()
             print(f"{Fore.GREEN}Database cleared{Style.RESET_ALL}")
             
-        elif choice == "6":
+        elif choice == "8":
             break
 
 if __name__ == "__main__":
