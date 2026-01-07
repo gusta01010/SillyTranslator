@@ -17,7 +17,7 @@ class TranslatorApp:
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         self.translate_angle_var = tk.BooleanVar(value=self.config.data.get("translate_angle"))
-        self.save_location_var = tk.StringVar(value=self.config.data.get("save_location"))
+        self.save_location_var = tk.StringVar(value=self.config.data.get("savepy_location"))
         self.use_llm_var = tk.BooleanVar(value=self.config.data.get("use_llm_translation"))
         self.llm_provider_var = tk.StringVar(value=self.config.data.get("llm_provider"))
         
