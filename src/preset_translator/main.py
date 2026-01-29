@@ -17,7 +17,7 @@ class TranslatorApp:
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         self.translate_angle_var = tk.BooleanVar(value=self.config.data.get("translate_angle"))
-        self.save_location_var = tk.StringVar(value=self.config.data.get("savepy_location"))
+        self.save_location_var = tk.StringVar(value=self.config.data.get("save_location"))
         self.use_llm_var = tk.BooleanVar(value=self.config.data.get("use_llm_translation"))
         self.llm_provider_var = tk.StringVar(value=self.config.data.get("llm_provider"))
         
@@ -107,8 +107,7 @@ class TranslatorApp:
 
     def _update_llm_ui_visibility(self):
         if self.use_llm_var.get():
-
-            self.llm_options_frame.grid(row=1, column=0, sticky="ew", pady=(5,0))
+            self.llm_options_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
         else:
             self.llm_options_frame.grid_forget()
 
@@ -151,10 +150,6 @@ class TranslatorApp:
         lang_code = self.config.get_lang_code(selected_lang_name)
         if lang_code and lang_code != self.config.current_lang:
             self.config.current_lang = lang_code
-
-    def _update_llm_ui_visibility(self):
-        if self.use_llm_var.get(): self.llm_options_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
-        else: self.llm_options_frame.grid_remove()
 
     def _update_llm_provider_ui(self):
         provider = self.llm_provider_var.get()
@@ -216,22 +211,25 @@ class TranslatorApp:
 
     def set_ui_state(self, is_enabled):
         state = "normal" if is_enabled else "disabled"
-        for widget in [self.lang_combobox, self.select_button, self.remove_button, self.translate_button]:
+        
+        # Action buttons
+        for btn in [self.select_button, self.remove_button, self.translate_button, self.change_st_path_button]:
+            btn.config(state=state)
+            
+        # Selects and Options
+        for widget in [self.lang_combobox, self.silly_radio, self.custom_radio, self.use_llm_checkbox]:
             widget.config(state=state)
 
-        for parent in [self.root.winfo_children()[0].winfo_children()[0], self.llm_options_frame]:
-             for child in parent.winfo_children():
-                if isinstance(child, (ttk.Checkbutton, ttk.Radiobutton, ttk.Button, ttk.Entry)):
-                     child.config(state=state)
-
-                elif isinstance(child, ttk.Frame):
-                    for sub_child in child.winfo_children():
-                        if isinstance(sub_child, (ttk.Radiobutton, ttk.Button, ttk.Entry)):
-                            sub_child.config(state=state)
-                        elif isinstance(sub_child, ttk.Frame):
-                            for sub_sub_child in sub_child.winfo_children():
-                                if isinstance(sub_sub_child, (ttk.Radiobutton, ttk.Button)):
-                                    sub_sub_child.config(state=state)
+        # LLM specific inputs
+        for entry in [self.or_api_entry, self.or_model_entry, self.groq_api_entry, self.groq_model_entry]:
+            entry.config(state=state)
+        
+        # Provider radios
+        for child in self.llm_options_frame.winfo_children():
+            if isinstance(child, ttk.Frame):
+                for sub in child.winfo_children():
+                    if isinstance(sub, ttk.Radiobutton):
+                        sub.config(state=state)
 
     def start_translation(self):
         self._save_config()
@@ -303,6 +301,7 @@ class TranslatorApp:
         try:
             total_files = len(files)
             for i, file_path in enumerate(files):
+                filename = os.path.basename(file_path)
                 
                 def field_progress_callback(current_field, total_fields):
                     self.root.after(0, self._update_progress, i, total_files, file_path, current_field, total_fields)
@@ -310,27 +309,33 @@ class TranslatorApp:
                 kwargs_with_progress = kwargs.copy()
                 kwargs_with_progress['on_progress'] = field_progress_callback
 
+                self.root.after(0, lambda f=filename: self.status_label.config(text=f"Loading: {f}..."))
                 json_data = load_json_safe(file_path)
                 if not json_data:
+                    print(f"Failed to load or empty JSON: {file_path}")
                     self.root.after(0, self._update_progress, i, total_files, file_path, 0, 0)
                     continue
                 
+                # Perform translation
                 translated_data = self.engine.translate_json_data(data=json_data, **kwargs_with_progress)
                 
-                base, ext = os.path.splitext(os.path.basename(file_path))
+                # Save result
+                base, ext = os.path.splitext(filename)
                 new_filename = f"{base}_{kwargs['target_lang_code']}{ext}"
                 
                 potential_char_dir = os.path.join(save_dir, "public", "characters")
                 output_dir = potential_char_dir if os.path.isdir(potential_char_dir) else save_dir
                 
                 output_path = os.path.join(output_dir, new_filename)
-                save_json(output_path, translated_data)
+                if not save_json(output_path, translated_data):
+                    raise IOError(f"Failed to save translated file to {output_path}")
 
             self.root.after(0, lambda: self.progress_bar.config(value=100))
             self.root.after(0, lambda: self.status_label.config(text=f"Completed {total_files}/{total_files} files."))
             self.root.after(0, lambda: messagebox.showinfo("Success", "Translation completed successfully."))
         except Exception as e:
-            self.root.after(0, lambda: messagebox.showerror("Error", f"An error occurred: {e}"))
+            print(f"Translation Error: {e}")
+            self.root.after(0, lambda e=e: messagebox.showerror("Translation Error", f"An error occurred during translation:\n\n{str(e)}"))
         finally:
             self.root.after(0, lambda: self.set_ui_state(True))
             self.root.after(0, lambda: self.status_label.config(text="Idle"))

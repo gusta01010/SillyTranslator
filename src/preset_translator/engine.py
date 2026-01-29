@@ -13,7 +13,8 @@ TARGET_FIELDS = {
     "content", "new_group_chat_prompt", "new_example_chat_prompt",
     "continue_nudge_prompt", "wi_format", "personality_format",
     "group_nudge_prompt", "scenario_format", "new_chat_prompt",
-    "impersonation_prompt", "bias_preset_selected", "assistant_impersonation"
+    "impersonation_prompt", "bias_preset_selected", "assistant_impersonation",
+    "assistant_prefill"
 }
 
 CODE_BLOCK_PLACEHOLDER_PREFIX = "__CODE_BLOCK_"
@@ -101,8 +102,9 @@ class TranslationEngine:
         return text, protected_items
 
     def _restore_protected(self, text, protected_items):
-        for placeholder, original_text in protected_items.items():
-            text = text.replace(placeholder, original_text)
+        # Sort placeholders by length descending to avoid partial replacement (e.g., _1 vs _10)
+        for placeholder in sorted(protected_items.keys(), key=len, reverse=True):
+            text = text.replace(placeholder, protected_items[placeholder])
         for placeholder_val, original_key in REVERSED_VAR_PLACEHOLDERS.items():
             text = text.replace(placeholder_val, original_key)
         return text
@@ -158,34 +160,60 @@ class TranslationEngine:
             completion = client.chat.completions.create(
                 model=llm_config['model'],
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.1
+                temperature=0.1,
+                timeout=90.0
             )
             raw_response = completion.choices[0].message.content
+
+            if not raw_response:
+                raise ValueError("Received empty response from LLM provider.")
 
             return self._clean_llm_response(raw_response)
         except (APIError, GroqAPIError) as e:
             raise ConnectionError(f"API Error with {provider}: {e}")
         except Exception as e:
+            if "timeout" in str(e).lower():
+                raise ConnectionError(f"LLM request timed out after 90 seconds. Try a faster model or check your connection.")
             raise RuntimeError(f"An unexpected error occurred during LLM translation: {e}")
 
     def _translate_with_google(self, text, target_lang_code):
         self.google_translator.target = target_lang_code
         
+        # Split by sentences first
         sentences = re.split(r'(?<=[.!?])\s+', text)
-        translated_text = ""
+        translated_chunks = []
         current_chunk = ""
 
+        def translate_now(t):
+            if not t.strip(): return t
+            try:
+                # Add a bit of safety margin to the limit
+                return self.google_translator.translate(text=t.strip())
+            except Exception as e:
+                print(f"Google Translate error: {e}")
+                return t # Fallback to original
+
         for sentence in sentences:
-            if len(current_chunk) + len(sentence) > MAX_CHUNK_CHAR_LIMIT:
+            # If a single sentence is still too long, break it by characters
+            if len(sentence) > MAX_CHUNK_CHAR_LIMIT:
                 if current_chunk:
-                    translated_text += self.google_translator.translate(text=current_chunk) + " "
-                current_chunk = sentence
+                    translated_chunks.append(translate_now(current_chunk))
+                    current_chunk = ""
+                
+                # Hard break the massive sentence
+                for i in range(0, len(sentence), MAX_CHUNK_CHAR_LIMIT):
+                    part = sentence[i:i + MAX_CHUNK_CHAR_LIMIT]
+                    translated_chunks.append(translate_now(part))
+            elif len(current_chunk) + len(sentence) > MAX_CHUNK_CHAR_LIMIT:
+                translated_chunks.append(translate_now(current_chunk))
+                current_chunk = sentence + " "
             else:
                 current_chunk += sentence + " "
 
         if current_chunk:
-            translated_text += self.google_translator.translate(text=current_chunk.strip())
-        return translated_text
+            translated_chunks.append(translate_now(current_chunk))
+        
+        return " ".join(translated_chunks).strip()
 
     def translate_text(self, text, **kwargs):
         if not isinstance(text, str) or not text.strip():
@@ -205,7 +233,12 @@ class TranslationEngine:
     
     def translate_json_data(self, data, **kwargs):
         items_to_translate = []
+        visited = set()
+
         def find_items(current_data):
+            if id(current_data) in visited: return
+            visited.add(id(current_data))
+            
             if isinstance(current_data, dict):
                 for key, value in current_data.items():
                     if key in TARGET_FIELDS and isinstance(value, str) and value.strip():
@@ -213,7 +246,8 @@ class TranslationEngine:
                     elif isinstance(value, (dict, list)):
                         find_items(value)
             elif isinstance(current_data, list):
-                for item in current_data: find_items(item)
+                for item in current_data: 
+                    find_items(item)
 
         find_items(data)
         on_progress = kwargs.pop('on_progress', None)
