@@ -5,6 +5,7 @@ import hashlib
 import time
 import threading
 import shutil
+import struct
 from pathlib import Path
 from typing import Dict, Any, Optional
 from dataclasses import dataclass, asdict
@@ -284,28 +285,73 @@ class CharacterProcessor:
             return hashlib.md5(f.read()).hexdigest()
     
     def extract_character_data(self, image_path: Path) -> Optional[Dict]:
-        """Extract character data from PNG image using PIL"""
+        """Extract character data from PNG image using manual parsing to handle multiple chunks"""
         try:
-            with Image.open(image_path) as img:
-                # Check for 'chara' metadata in PNG text chunks
-                if hasattr(img, 'text') and 'chara' in img.text:
-                    chara_data = img.text['chara']
-                elif hasattr(img, 'info') and 'chara' in img.info:
-                    chara_data = img.info['chara']
-                else:
-                    print(f"No 'chara' metadata found in {image_path.name}")
-                    return None
-                
-                # Decode base64 and parse JSON
+            chara_chunks = []
+            
+            # manually parse PNG chunks to find all 'chara' keyword chunks
+            # PIL's info/text dictionaries only store the last occurrence of a key
+            with open(image_path, 'rb') as f:
+                sig = f.read(8)
+                if sig == b'\x89PNG\r\n\x1a\n':
+                    while True:
+                        length_data = f.read(4)
+                        if not length_data:
+                            break
+                        length = struct.unpack('>I', length_data)[0]
+                        chunk_type = f.read(4)
+                        
+                        # we look for tEXt, zTXt and iTXt chunks
+                        if chunk_type in [b'tEXt', b'iTXt', b'zTXt']:
+                            data = f.read(length)
+                            # check if it starts with 'chara\0'
+                            if data.startswith(b'chara\x00'):
+                                # keyword is separated by null byte from the value
+                                chara_chunks.append(data[6:])
+                        else:
+                            f.seek(length, 1)
+                        
+                        f.read(4) # skip CRC
+                        if chunk_type == b'IEND':
+                            break
+
+            # fallback to PIL if manual parsing didn't find anything or for non-PNG formats
+            if not chara_chunks:
+                with Image.open(image_path) as img:
+                    if hasattr(img, 'text') and 'chara' in img.text:
+                        chara_chunks = [img.text['chara']]
+                    elif hasattr(img, 'info') and 'chara' in img.info:
+                        chara_chunks = [img.info['chara']]
+
+            if not chara_chunks:
+                print(f"No 'chara' metadata found in {image_path.name}")
+                return None
+
+            for chara_data in chara_chunks:
                 try:
-                    decoded_data = base64.b64decode(chara_data).decode('utf-8')
+                    if isinstance(chara_data, bytes):
+                        try:
+                            # handle potential zTXt compression if the first char after 'chara\0' is \0 (compression method)
+                            # but for now we assume standard tEXt/iTXt as seen in your file
+                            encoded_str = chara_data.decode('utf-8', errors='ignore')
+                        except:
+                            continue
+                    else:
+                        encoded_str = chara_data
+
+                    decoded_data = base64.b64decode(encoded_str).decode('utf-8')
                     char_data = json.loads(decoded_data)
-                    print(f"✓ Successfully extracted character data from {image_path.name}")
-                    return char_data
-                except (base64.binascii.Error, json.JSONDecodeError) as e:
-                    print(f"Error decoding character data from {image_path.name}: {e}")
-                    return None
                     
+                    # log which one we are using
+                    if len(chara_chunks) > 1:
+                        print(f"✓ Found multiple chara chunks. Using the first one found ({len(encoded_str)} bytes)")
+                    else:
+                        print(f"✓ Successfully extracted character data from {image_path.name}")
+                    
+                    return char_data
+                except Exception:
+                    continue
+
         except Exception as e:
             print(f"Error opening image {image_path}: {e}")
         
