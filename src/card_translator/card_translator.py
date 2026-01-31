@@ -494,17 +494,19 @@ class CharacterProcessor:
             
             # Handle data.alternate_greetings with duplicate detection
             if self.config.translate_greetings and 'alternate_greetings' in data_obj and isinstance(data_obj['alternate_greetings'], list):
-                original_root_greetings = original_data.get('alternate_greetings', [])
+                original_root_greetings = original_data.get('alternate_greetings')
                 original_data_greetings = original_data_obj.get('alternate_greetings', [])
                 
-                # Check if greetings arrays are identical
+                # Check if greetings arrays are identical and root actually HAS them
                 if (isinstance(original_root_greetings, list) and 
                     len(original_root_greetings) == len(original_data_greetings) and
+                    'alternate_greetings' in translated_data and
                     all(self.fields_are_identical(str(r), str(d)) for r, d in zip(original_root_greetings, original_data_greetings))):
                     print(f"  Copying translated alternate greetings from root to data...")
                     data_obj['alternate_greetings'] = translated_data['alternate_greetings']
                 else:
-                    print(f"  Translating {len(data_obj['alternate_greetings'])} data alternate greetings...")
+                    if len(data_obj['alternate_greetings']) > 0:
+                        print(f"  Translating {len(data_obj['alternate_greetings'])} data alternate greetings...")
                     translated_greetings = []
                     for greeting in data_obj['alternate_greetings']:
                         if isinstance(greeting, str) and greeting.strip():
@@ -594,10 +596,19 @@ class CharacterProcessor:
         
         print(f"{Fore.YELLOW}📝 Processing: {image_path.name}{Style.RESET_ALL}")
         
-        # Move to original directory
+        # Move to original directory with retries for Windows file locks
         original_file = self.original_dir / image_path.name
         if not original_file.exists():
-            os.rename(image_path, original_file)
+            max_retries = 5
+            for i in range(max_retries):
+                try:
+                    shutil.move(str(image_path), str(original_file))
+                    break
+                except PermissionError:
+                    if i < max_retries - 1:
+                        time.sleep(1) # Wait a bit and try again
+                    else:
+                        raise
         
         # Extract character data
         char_data = self.extract_character_data(original_file)
