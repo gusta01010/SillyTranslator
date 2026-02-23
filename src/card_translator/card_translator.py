@@ -24,15 +24,17 @@ init(autoreset=True)
 class Config:
     """Configuration settings"""
     characters_dir: str = ""
-    target_lang: str = "pt"
+    target_lang: str = "en-US"
     translate_names: bool = False
     translate_greetings: bool = True # new setting to switch between alternate greetings to be translated or not
     translate_angles: bool = False
-    service: str = "google"
+    service: str = "llm"
     use_char_name: bool = False
-    api_key: str = ""
-    model: str = "llama-3.3-70b-versatile"
-    provider: str = "groq"  # groq or openrouter
+    groq_api_key: str = ""
+    openrouter_api_key: str = ""
+    nanogpt_api_key: str = ""
+    model: str = "meta-llama/llama-3.1-8b-instruct"
+    provider: str = "openrouter"  # groq, openrouter or nanogpt
     personas_translated: bool = False
 
 class Translator:
@@ -170,6 +172,8 @@ Your task is to translate provided text COMPLETELY from English to {target_lang}
                 return self._groq_translate(messages)
             elif self.provider == "openrouter":
                 return self._openrouter_translate(messages)
+            elif self.provider == "nanogpt":
+                return self._nanogpt_translate(messages)
         except Exception as e:
             print(f"LLM translation error: {e}")
             return text
@@ -193,6 +197,23 @@ Your task is to translate provided text COMPLETELY from English to {target_lang}
             import openai
             client = openai.OpenAI(
                 base_url="https://openrouter.ai/api/v1",
+                api_key=self.api_key
+            )
+            response = client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.1
+            )
+            return response.choices[0].message.content
+        except ImportError:
+            print("OpenAI library not installed. Run: pip install openai")
+            return ""
+
+    def _nanogpt_translate(self, messages: list) -> str:
+        try:
+            import openai
+            client = openai.OpenAI(
+                base_url="https://nano-gpt.com/api/v1",
                 api_key=self.api_key
             )
             response = client.chat.completions.create(
@@ -275,7 +296,14 @@ class CharacterProcessor:
     def setup_translator(self) -> Translator:
         """Setup the appropriate translator"""
         if self.config.service == "llm":
-            return LLMTranslator(self.config.api_key, self.config.provider, self.config.model)
+            api_key = ""
+            if self.config.provider == "groq":
+                api_key = self.config.groq_api_key
+            elif self.config.provider == "openrouter":
+                api_key = self.config.openrouter_api_key
+            elif self.config.provider == "nanogpt":
+                api_key = self.config.nanogpt_api_key
+            return LLMTranslator(api_key, self.config.provider, self.config.model)
         else:
             return GoogleTranslator()
     
@@ -677,9 +705,9 @@ class CharacterProcessor:
             print(f"{Fore.RED}❌ settings.json not found!{Style.RESET_ALL}")
             return
 
-        # Create backup if it doesn't exist
+        # Create backup if it doesn't exist or if personas are currently in original state
         backup_path = settings_path.with_suffix('.json.bak')
-        if not backup_path.exists():
+        if not backup_path.exists() or not self.config.personas_translated:
             print(f"{Fore.CYAN}📦 Creating backup of settings.json...{Style.RESET_ALL}")
             shutil.copy2(settings_path, backup_path)
 
@@ -784,7 +812,16 @@ def show_current_status(processor: CharacterProcessor):
     # Translation service and details
     if processor.config.service == "llm":
         status = f"🤖 LLM: {processor.config.provider.upper()} - {processor.config.model}"
-        if not processor.config.api_key:
+        
+        api_key = ""
+        if processor.config.provider == "groq":
+            api_key = processor.config.groq_api_key
+        elif processor.config.provider == "openrouter":
+            api_key = processor.config.openrouter_api_key
+        elif processor.config.provider == "nanogpt":
+            api_key = processor.config.nanogpt_api_key
+            
+        if not api_key:
             status += f" {Fore.RED}(No API Key){Style.RESET_ALL}"
     else:
         status = f"🌐 Service: Google Translate"
@@ -821,7 +858,16 @@ def configure_settings(processor: CharacterProcessor):
         if processor.config.service == "llm":
             print(f"7. API Provider: {processor.config.provider}")
             print(f"8. Model: {processor.config.model}")
-            print(f"9. API Key: {'Set' if processor.config.api_key else 'Not set'}")
+            
+            api_key = ""
+            if processor.config.provider == "groq":
+                api_key = processor.config.groq_api_key
+            elif processor.config.provider == "openrouter":
+                api_key = processor.config.openrouter_api_key
+            elif processor.config.provider == "nanogpt":
+                api_key = processor.config.nanogpt_api_key
+                
+            print(f"9. {processor.config.provider.capitalize()} API Key: {'Set' if api_key else 'Not set'}")
         print("10. Back to main menu")
         
         choice = input(f"\n{Fore.GREEN}Choose option: {Style.RESET_ALL}").strip()
@@ -882,18 +928,23 @@ def configure_settings(processor: CharacterProcessor):
             processor.save_config()
             
         elif choice == "7" and processor.config.service == "llm":
-            providers = {"1": "groq", "2": "openrouter"}
-            print("Providers: 1=Groq, 2=OpenRouter")
+            providers = {"1": "groq", "2": "openrouter", "3": "nanogpt"}
+            print("Providers: 1=Groq (NOT RECOMMENDED!), 2=OpenRouter, 3=NanoGPT")
             prov_choice = input("Choose provider: ").strip()
             if prov_choice in providers:
                 processor.config.provider = providers[prov_choice]
+                if prov_choice == "1":
+                    print("\n**WARNING!**\nRecently groq began to mass restrict multiple accounts due to violation of their terms of service, be very careful using this service because it can get your organization restricted.\n")
+                    input("Press enter to continue")
                 processor.save_config()
                 
         elif choice == "8" and processor.config.service == "llm":
             if processor.config.provider == "groq":
                 models = ["meta-llama/llama-4-scout-17b-16e-instruct", "openai/gpt-oss-20b", "meta-llama/llama-4-maverick-17b-128e-instruct"]
-            else:
+            elif processor.config.provider == "openrouter":
                 models = ["google/gemini-2.0-pro-exp-02-05:free", "microsoft/phi-3-mini-128k-instruct:free"]
+            elif processor.config.provider == "nanogpt":
+                models = ["Mistral-Nemo-12B-Instruct-2407", "Meta-Llama-3-1-8B-Instruct-FP8", "meta-llama/llama-3.1-8b-instruct", "mistralai/Devstral-Small-2505"]
             
             for i, model in enumerate(models, 1):
                 print(f"{i}. {model}")
@@ -908,8 +959,14 @@ def configure_settings(processor: CharacterProcessor):
                 print(f"{Fore.RED}Invalid choice!{Style.RESET_ALL}")
                 
         elif choice == "9" and processor.config.service == "llm":
-            api_key = input("Enter API key: ").strip()
-            processor.config.api_key = api_key
+            api_key = input(f"Enter {processor.config.provider.capitalize()} API key: ").strip()
+            if processor.config.provider == "groq":
+                processor.config.groq_api_key = api_key
+            elif processor.config.provider == "openrouter":
+                processor.config.openrouter_api_key = api_key
+            elif processor.config.provider == "nanogpt":
+                processor.config.nanogpt_api_key = api_key
+            
             processor.translator = processor.setup_translator()
             processor.save_config()
             
@@ -949,9 +1006,18 @@ def main():
                 print(f"{Fore.RED}Please configure characters directory first!{Style.RESET_ALL}")
                 continue
             
-            if processor.config.service == "llm" and not processor.config.api_key:
-                print(f"{Fore.RED}Please configure API key for LLM service first!{Style.RESET_ALL}")
-                continue
+            if processor.config.service == "llm":
+                api_key = ""
+                if processor.config.provider == "groq":
+                    api_key = processor.config.groq_api_key
+                elif processor.config.provider == "openrouter":
+                    api_key = processor.config.openrouter_api_key
+                elif processor.config.provider == "nanogpt":
+                    api_key = processor.config.nanogpt_api_key
+                    
+                if not api_key:
+                    print(f"{Fore.RED}Please configure {processor.config.provider.capitalize()} API key first!{Style.RESET_ALL}")
+                    continue
                 
             print(f"{Fore.BLUE}🔍 Starting monitoring of {processor.config.characters_dir}{Style.RESET_ALL}")
             
