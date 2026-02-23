@@ -146,22 +146,26 @@ class LLMTranslator(Translator):
         if not self.api_key:
             return text
             
-        system_prompt = f"""You are a professional translator specializing in roleplay character cards. 
-Your task is to translate provided text COMPLETELY from English to {target_lang}.
+        system_prompt = f"""You are a high-precision translation engine specializing in roleplay character cards. 
+Your task is to provide a 1:1 translation from English to {target_lang}.
 
-### CRITICAL RULES:
-1. **Full Translation**: Translate EVERYTHING. Do not leave any English words or sentences in your response. Do not mix languages.
-2. **Handle Placeholders**: Keep {{{{char}}}}, {{{{user}}}}, and content inside < > or {{{{ }}}} exactly as they are. Do NOT translate them.
-3. **Preserve Format**: Maintain all Markdown (e.g., *italics*, **bold**), HTML tags, and line breaks exactly as in the original.
-4. **Gender Consistency**: Ensure grammatical gender (adjectives, pronouns) matches the context of {{{{char}}}} and {{{{user}}}}.
-5. **Natural Speech**: Adapt stuttering (e.g., "h-hello" -> "o-olá") and slang to sound natural in {target_lang}.
-6. **No Chatting**: Deliver ONLY the translated text. No preamble, no explanations, no "Translation:", no meta-commentary."""
+### STRICT PROTOCOLS:
+1. **Direct Translation Only**: Translate the text exactly as provided. Do NOT add new information, do NOT summarize, do NOT rewrite for "clarity", and do NOT invent details.
+2. **Zero Commentary**: Output ONLY the translated text. No preamble, no "Here is the translation", no "Translation:", no post-script notes.
+3. **No Added Formatting**: Do NOT add any Markdown horizontal rules (`---`), boxes, or separators that are not in the original text.
+4. **Handle Placeholders**: Keep {{{{char}}}}, {{{{user}}}}, and content inside < > or {{{{ }}}} exactly as they are. Do NOT translate or modify them.
+5. **Preserve Format**: Maintain all original Markdown formatting (e.g., *italics*, **bold**, > quotes), HTML tags, and line breaks exactly as in the original.
+6. **Gender Alignment**: Ensure the grammatical gender in {target_lang} consistently matches the context of {{{{char}}}} and {{{{user}}}}.
+7. **No Conversational Fillers**: Do not speak to the user. Do not explain your choices. If you cannot translate something, leave it in English but do NOT apologize.
 
-        if extra_instructions:
-            system_prompt += f"\n\n### EXTRA INSTRUCTIONS:\n{extra_instructions}"
+### ADDITIONAL CONSTRAINTS:
+{extra_instructions if extra_instructions else "None"}"""
 
-        user_content = f"### TEXT TO TRANSLATE (ENGLISH):\n{text}\n\n### TRANSLATION ({target_lang}):"
-        
+        user_content = f"""### SOURCE TEXT (ENGLISH):
+{text}
+
+### {target_lang.upper()} TRANSLATION:"""
+
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content}
@@ -169,14 +173,35 @@ Your task is to translate provided text COMPLETELY from English to {target_lang}
         
         try:
             if self.provider == "groq":
-                return self._groq_translate(messages)
+                result = self._groq_translate(messages)
             elif self.provider == "openrouter":
-                return self._openrouter_translate(messages)
+                result = self._openrouter_translate(messages)
             elif self.provider == "nanogpt":
-                return self._nanogpt_translate(messages)
+                result = self._nanogpt_translate(messages)
+            
+            return self._clean_response(result) if result else text
         except Exception as e:
             print(f"LLM translation error: {e}")
             return text
+
+    def _clean_response(self, text: str) -> str:
+        """Clean the LLM response from unwanted formatting"""
+        if not text:
+            return ""
+        
+        # Remove reasoning tags if any
+        import re
+        text = re.sub(r'<\w+>[\s\S]*?<\/\w+>', '', text, flags=re.IGNORECASE)
+        
+        # Remove code blocks if LLM wrapped it
+        text = re.sub(r'^```(\w+)?\n', '', text)
+        text = re.sub(r'\n```$', '', text)
+        
+        # Remove common hallucinated markers or horizontal rules at start/end
+        text = re.sub(r'^(?:\r?\n|---|\*)*', '', text)
+        text = re.sub(r'(?:\r?\n|---|\*)*$', '', text)
+        
+        return text.strip()
     
     def _groq_translate(self, messages: list) -> str:
         try:
@@ -934,7 +959,7 @@ def configure_settings(processor: CharacterProcessor):
             if prov_choice in providers:
                 processor.config.provider = providers[prov_choice]
                 if prov_choice == "1":
-                    print("\n**WARNING!**\nRecently groq began to mass restrict multiple accounts due to violation of their terms of service, be very careful using this service because it can get your organization restricted.\n")
+                    print("\n**WARNING!**\nRecently groq began to restrict multiple accounts due to violation of their terms of service, be very careful using this service because it can get your organization restricted.\n")
                     input("Press enter to continue")
                 processor.save_config()
                 
@@ -944,7 +969,7 @@ def configure_settings(processor: CharacterProcessor):
             elif processor.config.provider == "openrouter":
                 models = ["google/gemini-2.0-pro-exp-02-05:free", "microsoft/phi-3-mini-128k-instruct:free"]
             elif processor.config.provider == "nanogpt":
-                models = ["Mistral-Nemo-12B-Instruct-2407", "Meta-Llama-3-1-8B-Instruct-FP8", "meta-llama/llama-3.1-8b-instruct", "mistralai/Devstral-Small-2505"]
+                models = ["Mistral-Nemo-12B-Instruct-2407", "meta-llama/llama-3.1-8b-instruct", "mistralai/mistral-small-creative", "openai/gpt-oss-120b"]
             
             for i, model in enumerate(models, 1):
                 print(f"{i}. {model}")

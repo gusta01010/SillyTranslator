@@ -25,6 +25,8 @@ class TranslatorApp:
         self.openrouter_model_var = tk.StringVar(value=self.config.data.get("openrouter_model"))
         self.groq_api_key_var = tk.StringVar(value=self.config.data.get("groq_api_key"))
         self.groq_model_var = tk.StringVar(value=self.config.data.get("groq_model"))
+        self.nanogpt_api_key_var = tk.StringVar(value=self.config.data.get("nanogpt_api_key"))
+        self.nanogpt_model_var = tk.StringVar(value=self.config.data.get("nanogpt_model"))
 
         main_frame = ttk.Frame(root, padding="15")
         main_frame.pack(fill=tk.BOTH, expand=True)
@@ -92,6 +94,7 @@ class TranslatorApp:
         ttk.Label(provider_frame, text="Provider:").pack(side=tk.LEFT, padx=(0, 10))
         ttk.Radiobutton(provider_frame, text="OpenRouter", variable=self.llm_provider_var, value="openrouter", command=self._update_llm_provider_ui).pack(side=tk.LEFT)
         ttk.Radiobutton(provider_frame, text="Groq", variable=self.llm_provider_var, value="groq", command=self._update_llm_provider_ui).pack(side=tk.LEFT, padx=10)
+        ttk.Radiobutton(provider_frame, text="NanoGPT", variable=self.llm_provider_var, value="nanogpt", command=self._update_llm_provider_ui).pack(side=tk.LEFT)
 
         self.or_api_label = ttk.Label(self.llm_options_frame, text="OpenRouter API Key:")
         self.or_model_label = ttk.Label(self.llm_options_frame, text="OpenRouter Model:")
@@ -102,6 +105,11 @@ class TranslatorApp:
         self.groq_model_label = ttk.Label(self.llm_options_frame, text="Groq Model:")
         self.groq_api_entry = ttk.Entry(self.llm_options_frame, textvariable=self.groq_api_key_var, show='*', width=40)
         self.groq_model_entry = ttk.Entry(self.llm_options_frame, textvariable=self.groq_model_var, width=40)
+
+        self.nano_api_label = ttk.Label(self.llm_options_frame, text="NanoGPT API Key:")
+        self.nano_model_label = ttk.Label(self.llm_options_frame, text="NanoGPT Model:")
+        self.nano_api_entry = ttk.Entry(self.llm_options_frame, textvariable=self.nanogpt_api_key_var, show='*', width=40)
+        self.nano_model_entry = ttk.Entry(self.llm_options_frame, textvariable=self.nanogpt_model_var, width=40)
         
         self._update_llm_provider_ui()
 
@@ -154,7 +162,8 @@ class TranslatorApp:
     def _update_llm_provider_ui(self):
         provider = self.llm_provider_var.get()
         for widget in [self.or_api_label, self.or_api_entry, self.or_model_label, self.or_model_entry,
-                       self.groq_api_label, self.groq_api_entry, self.groq_model_label, self.groq_model_entry]:
+                       self.groq_api_label, self.groq_api_entry, self.groq_model_label, self.groq_model_entry,
+                       self.nano_api_label, self.nano_api_entry, self.nano_model_label, self.nano_model_entry]:
             widget.grid_forget()
 
         if provider == 'openrouter':
@@ -163,10 +172,16 @@ class TranslatorApp:
             self.or_model_label.grid(row=2, column=0, sticky='w', pady=2, padx=5)
             self.or_model_entry.grid(row=2, column=1, sticky='ew', pady=2)
         elif provider == 'groq':
+            messagebox.showwarning("Warning!", "Recently groq began to restrict multiple accounts due to violation of their terms of service, be very careful using this service because it can get your organization restricted.")
             self.groq_api_label.grid(row=1, column=0, sticky='w', pady=2, padx=5)
             self.groq_api_entry.grid(row=1, column=1, sticky='ew', pady=2)
             self.groq_model_label.grid(row=2, column=0, sticky='w', pady=2, padx=5)
             self.groq_model_entry.grid(row=2, column=1, sticky='ew', pady=2)
+        elif provider == 'nanogpt':
+            self.nano_api_label.grid(row=1, column=0, sticky='w', pady=2, padx=5)
+            self.nano_api_entry.grid(row=1, column=1, sticky='ew', pady=2)
+            self.nano_model_label.grid(row=2, column=0, sticky='w', pady=2, padx=5)
+            self.nano_model_entry.grid(row=2, column=1, sticky='ew', pady=2)
 
     def _update_save_location_ui(self):
         if self.save_location_var.get() == "silly":
@@ -190,7 +205,9 @@ class TranslatorApp:
             "openrouter_api_key": self.openrouter_api_key_var.get(),
             "openrouter_model": self.openrouter_model_var.get(),
             "groq_api_key": self.groq_api_key_var.get(),
-            "groq_model": self.groq_model_var.get()
+            "groq_model": self.groq_model_var.get(),
+            "nanogpt_api_key": self.nanogpt_api_key_var.get(),
+            "nanogpt_model": self.nanogpt_model_var.get()
         })
         self.config.save()
         print("Configuration saved.")
@@ -221,7 +238,7 @@ class TranslatorApp:
             widget.config(state=state)
 
         # LLM specific inputs
-        for entry in [self.or_api_entry, self.or_model_entry, self.groq_api_entry, self.groq_model_entry]:
+        for entry in [self.or_api_entry, self.or_model_entry, self.groq_api_entry, self.groq_model_entry, self.nano_api_entry, self.nano_model_entry]:
             entry.config(state=state)
         
         # Provider radios

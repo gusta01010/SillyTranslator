@@ -61,6 +61,7 @@ class TranslationConfig:
             "use_llm_translation": False, "llm_provider": "openrouter",
             "openrouter_api_key": "", "openrouter_model": "mistralai/mistral-7b-instruct:free",
             "groq_api_key": "", "groq_model": "llama3-8b-8192",
+            "nanogpt_api_key": "", "nanogpt_model": "gpt-4o",
         }
         loaded_config = load_json_safe(CONFIG_FILE)
         config = {**defaults, **loaded_config}
@@ -83,6 +84,7 @@ class TranslationEngine:
         self.google_translator = Translator(source='auto', target='en')
         self.openrouter_client = None
         self.groq_client = None
+        self.nanogpt_client = None
 
     def _extract_and_protect(self, text):
         protected_items = {}
@@ -123,6 +125,8 @@ class TranslationEngine:
                 self.openrouter_client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
             elif provider == 'groq' and not self.groq_client and api_key:
                 self.groq_client = Groq(api_key=api_key)
+            elif provider == 'nanogpt' and not self.nanogpt_client and api_key:
+                self.nanogpt_client = OpenAI(base_url="https://nano-gpt.com/api/v1", api_key=api_key)
         except Exception as e:
             print(f"Failed to initialize {provider} client: {e}")
 
@@ -131,6 +135,9 @@ class TranslationEngine:
         cleaned_text = re.sub(reasoning_pattern, '', text, flags=re.IGNORECASE)
         cleaned_text = re.sub(r'^```(\w+)?\n', '', cleaned_text)
         cleaned_text = re.sub(r'\n```$', '', cleaned_text)
+        # Remove potential hallucinated indicators or horizontal rules at start/end
+        cleaned_text = re.sub(r'^(?:\r?\n|---)*', '', cleaned_text)
+        cleaned_text = re.sub(r'(?:\r?\n|---)*$', '', cleaned_text)
         return cleaned_text.strip()
 
     def _translate_with_llm(self, text, target_lang_name, llm_config, translate_angle):
@@ -139,21 +146,31 @@ class TranslationEngine:
         """
         provider = llm_config['provider']
         self._initialize_llm_clients(provider, llm_config['api_key'])
-        client = self.openrouter_client if provider == 'openrouter' else self.groq_client
+        
+        if provider == 'openrouter':
+            client = self.openrouter_client
+        elif provider == 'nanogpt':
+            client = self.nanogpt_client
+        else:
+            client = self.groq_client
 
         if not client:
             raise ValueError(f"{provider.capitalize()} client not initialized. Check API key.")
 
-        angle_instruction = "Also, translate any text wrapped inside angle interior of the angle braces (<...>)." if translate_angle else "Do NOT translate any content inside angle braces (<>). Keep the content within them exactly as it appears in the original text."
+        angle_instruction = "Translate any text wrapped inside angle braces (<...>) normally." if translate_angle else "Keep all content inside angle braces (<...>) exactly as provided. Do NOT translate them."
 
         prompt = (
-            f"You are a raw text translator. Your sole task is to translate the user's text into {target_lang_name}. "
-            f"Provide ONLY the direct translation. Do NOT include explanations, apologies, or any XML-style reasoning tags like `<thinking>` or `<rationale>`."
-            f"\n{angle_instruction} "
-            f"\nDO NOT translate any content, or text wrapped inside curly brackets or double curly brackets ({{{{..}}}}).\n"
-            f"Your entire output must be the translated text and nothing else.\n\n"
-            f"Translate the following text:\n\n"
-            f"```text\n{text}\n```"
+            f"You are a high-precision translation engine. Your sole task is to translate the provided text into {target_lang_name}.\n\n"
+            f"### STRICT RULES:\n"
+            f"1. OUTPUT ONLY the translated text. No preamble, no meta-commentary, no 'Translation:', and no apologies.\n"
+            f"2. {angle_instruction}\n"
+            f"3. ZERO HALLUCINATION: Do not add information, notes, labels, or content that does not exist in the source.\n"
+            f"4. NO ADDED FORMATTING: Do NOT include horizontal rules (---) or any other separator that isn't in the original.\n"
+            f"5. PRESERVE PLACEHOLDERS: Do NOT translate or modify anything inside {{{{ }}}} (e.g., {{{{char}}}}, {{{{user}}}}).\n"
+            f"6. Maintain all original formatting (newlines, tabs, spaces).\n\n"
+            f"### SOURCE TEXT:\n"
+            f"{text}\n\n"
+            f"### {target_lang_name.upper()} TRANSLATION:"
         )
 
         try:
